@@ -1,0 +1,101 @@
+# SAMPLE CONFIG -- real WoFS (Warn-on-Forecast System) end-to-end scenario,
+# used by python_obj/notebooks/wofs_tutorial.ipynb: fetch matching MRMS
+# observations from AWS, interpolate them onto the WoFS grid, identify
+# objects in WoFS (no tracking, per-member -- each file holds all 18 members
+# stacked as a real array dimension, comp_dz(ne=18, lat, lon), not one file
+# per member, so stacked_members: true is required -- see
+# model.stacked_members in python_obj/drivers/README.md for the full
+# explanation), identify+track objects in the interpolated MRMS series, then
+# match the two. See also configs/config_sample_mpas.yaml, the complementary
+# sample for a single-member MPAS forecast where the interpolated MRMS is
+# already available (no fetch/interpolate needed).
+#
+# Model input (3 real, trimmed WoFS lead times) is bundled in
+# python_obj/sample_data/wofs_case/ so this works from a fresh clone with no
+# external test_wofs/ -- but fetch_mrms: still performs a REAL live AWS fetch
+# (internet access required), by design: that live-fetch step is itself part
+# of what this notebook demonstrates, not something to fake or skip. (A
+# separate, already-fetched copy of the same 3 MRMS files also ships in
+# sample_data/wofs_case/mrms/, used only by the test suite so it never needs
+# internet access.)
+#
+# All six sections below chain together end to end, mirroring config.yaml's
+# own chained-example convention: fetch_mrms writes to
+# output/fetched_mrms_wofs, interpolation reads that dir and writes to
+# output/interp_mrms_wofs, observations reads that same dir and writes
+# objects to output/obj_mrms_wofs, model writes objects to output/obj_wofs,
+# and matching reads both object directories.
+
+fetch_mrms:
+  model_input_dir: ../sample_data/wofs_case/wofs
+  file_pattern: "*.nc"
+  output_dir: output/fetched_mrms_wofs
+  valid_time_attr: valid_time    # WoFS's own ready-made "YYYYMMDD_HHMMSS" string attribute
+  valid_time_format: "%Y%m%d_%H%M%S"
+  tolerance_minutes: 2.5         # MRMS's real ~2-min cadence has irregular seconds jitter
+  s3_bucket: noaa-mrms-pds
+  mrms_product: MergedReflectivityQCComposite_00.50
+  mirror_subdirs: true
+  skip_existing: true
+  max_files: null
+
+interpolation:
+  raw_mrms_dir: output/fetched_mrms_wofs        # same dir fetch_mrms writes to above
+  interp_mrms_dir: output/interp_mrms_wofs
+  target_grid_file: ../sample_data/wofs_case/wofs/wofs_ALL_00_20260518_2300_2300.nc
+  target_lat_name: xlat                          # WoFS's own coordinate variable names
+  target_lon_name: xlon
+  n_workers: 8
+  weight_cache_dir: output/weight_cache_wofs
+  date_range: null                                # WoFS's 25 files span a midnight crossing -- take everything found
+  max_files: null
+
+observations:
+  file_format: netcdf
+  var_name: refl_consv                     # matches the interpolated-MRMS output convention
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: output/interp_mrms_wofs   # same dir interpolation writes to above
+  object_output_dir: output/obj_mrms_wofs
+  boundary_threshold: 40.0
+  max_value_threshold: 45.0
+  area_threshold_km2: 108.0
+  mask: none                                # WoFS's domain is small/storm-scale and moves daily
+  track: true                               # per the requested workflow: MRMS objects ARE tracked
+  track_distance_km: 0.0
+  file_grouping: single
+
+matching:
+  truth_object_dir: output/obj_mrms_wofs      # same dir observations writes to above
+  forecast_object_dir: output/obj_wofs        # same dir model writes to below
+  output_dir: output/matches_wofs
+  file_pattern: "*.nc"
+  max_boundary_disp_km: 40.0
+  max_centroid_disp_km: 40.0
+  ti_threshold: 0.2
+  max_time_offset_minutes: 5.0
+
+model:
+  input_dir: ../sample_data/wofs_case/wofs
+  stacked_members: true          # all members stacked inside each file, not one file per member
+  file_pattern: "*.nc"
+  object_output_dir: output/obj_wofs
+  file_format: netcdf
+  var_name: comp_dz
+  lat_name: xlat                 # WoFS's own coordinate variable names, not latitude/longitude
+  lon_name: xlon
+  valid_time_attr: valid_time    # WoFS stores a ready-made "YYYYMMDD_HHMMSS" string, not init+lead arithmetic
+  valid_time_format: "%Y%m%d_%H%M%S"
+  boundary_threshold: 45.0       # placeholder, same as MPAS -- tune per WoFS's own percentile-matched values
+  max_value_threshold: 50.2
+  area_threshold_km2: 108.0
+  mask: none                     # WoFS's domain is small/storm-scale and moves daily; CONUS masking doesn't apply
+  track: false                   # per the requested workflow: WoFS objects identified without tracking
+  track_distance_km: 0.0
+  file_grouping: ensemble_snapshot   # one file per time, all 18 members consolidated
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

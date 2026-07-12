@@ -1,0 +1,33 @@
+# 2-member MPAS ensemble scenario (test_mpas/mem1/, test_mpas/mem2/),
+# consolidated into one ensemble_snapshot object file per valid_time. Only
+# model: + linear_classification: are populated -- demonstrates that a
+# driver only needs the section(s) it actually uses; interpolation:/
+# observations:/matching: are simply absent here, not an error.
+
+model:
+  input_dir: ../../test_mpas
+  member_subdirs: true
+  file_pattern: "*_f0[01]?.nc"      # restrict to f000-f012 (13 hourly times), matching the
+                                     # already-validated 190-object cross-check
+  object_output_dir: output/obj_model_ensemble
+  file_format: netcdf
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  boundary_threshold: 45.0
+  max_value_threshold: 50.2
+  area_threshold_km2: 108.0
+  mask: conus_east
+  track: false
+  track_distance_km: 0.0
+  file_grouping: ensemble_snapshot
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

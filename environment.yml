@@ -1,0 +1,22 @@
+name: python_obj_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy=2.3
+  - scipy=1.16
+  - xarray=2025.10
+  - netcdf4=1.7
+  - pygrib=2.1
+  - scikit-image=0.25
+  - pyproj=3.7
+  - xesmf=0.9
+  - esmpy=8.9
+  - shapely=2.1
+  - matplotlib=3.10
+  - cartopy=0.25
+  - pyyaml=6.0
+  - requests=2.32
+  - jupyter
+  - nbformat=5.10
+  - pytest=9.1

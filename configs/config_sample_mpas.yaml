@@ -1,0 +1,76 @@
+# SAMPLE CONFIG -- single-member MPAS forecast scenario, used by
+# python_obj/notebooks/mpas_tutorial.ipynb: identify (non-tracked) objects in
+# the MPAS forecast (python_obj/sample_data/mpas_case/mpas_mem1/, f001-f003,
+# 3 real hourly lead times over a small ~750x750 km crop), identify
+# (non-tracked) objects in the already-interpolated MRMS truth series for the
+# same 3 hours, then match the two. Unlike config_sample_wofs.yaml, no
+# fetch_mrms:/interpolation: sections are needed here -- both the forecast
+# and the interpolated MRMS are already bundled on disk (see
+# sample_data/README.md), so this notebook starts directly at object ID. See
+# also configs/config_sample_wofs.yaml, the complementary sample that DOES
+# fetch+interpolate from scratch.
+#
+# observations/model/matching chain together end to end exactly like
+# config.yaml's own convention: observations reads the bundled
+# sample_data/mpas_case/interp_mrms/20230501/ directory and writes objects to
+# output/obj_mrms_mpas_sample, model writes objects to output/obj_mpas_sample,
+# and matching reads both object directories.
+#
+# Thresholds below (35.0/40.0 model, 40.0/45.0 obs) are chosen empirically to
+# produce real, non-trivial objects/matches on this small bundled crop --
+# NOT the production MPAS thresholds (45.0/50.2, see config.yaml/
+# config_ensemble.yaml) -- this sample's storm cluster peaks around 46-47 dBZ,
+# below the production max_value_threshold, so using the real production
+# values here would find zero objects.
+
+observations:
+  file_format: netcdf
+  var_name: refl_consv                        # matches the interpolated-MRMS output convention
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: ../sample_data/mpas_case/interp_mrms/20230501
+  object_output_dir: output/obj_mrms_mpas_sample
+  boundary_threshold: 40.0
+  max_value_threshold: 45.0
+  area_threshold_km2: 108.0
+  mask: none                      # small bundled crop, not the full CONUS domain
+  track: false                    # per the requested workflow: MRMS objects are NOT tracked in this sample
+  track_distance_km: 0.0
+  file_grouping: single           # one object file per available MRMS time (3 real hourly times)
+
+model:
+  input_dir: ../sample_data/mpas_case/mpas_mem1
+  member_subdirs: false            # single deterministic run, not an ensemble
+  file_pattern: "*_f00[1-3].nc"    # restrict to f001-f003 (excludes the f048 file also bundled here, used only by the test suite)
+  object_output_dir: output/obj_mpas_sample
+  file_format: netcdf
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  boundary_threshold: 35.0
+  max_value_threshold: 40.0
+  area_threshold_km2: 108.0
+  mask: none                      # small bundled crop, not the full CONUS domain
+  track: false                    # per the requested workflow: forecast objects are NOT tracked in this sample
+  track_distance_km: 0.0
+  file_grouping: single           # one object file per forecast valid time (single deterministic run)
+
+matching:
+  truth_object_dir: output/obj_mrms_mpas_sample   # same dir observations writes to above
+  forecast_object_dir: output/obj_mpas_sample     # same dir model writes to above
+  output_dir: output/matches_mpas_sample
+  file_pattern: "*.nc"
+  max_boundary_disp_km: 40.0
+  max_centroid_disp_km: 40.0
+  ti_threshold: 0.2
+  max_time_offset_minutes: 5.0
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

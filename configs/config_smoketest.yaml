@@ -1,0 +1,41 @@
+# Small, resource-conservative smoke-test config: 3 real, bundled hourly MRMS
+# files (python_obj/sample_data/), few workers. Only interpolation: +
+# observations: are populated -- demonstrates that a driver only needs the
+# section(s) it actually uses; model:/matching: are simply absent here, not
+# an error.
+#
+# Use this (not config.yaml) for quick end-to-end checks that work out of a
+# fresh clone with zero external data -- config.yaml's own date_range spans 2
+# full days against the larger local test_mrms/ (48 files, n_workers=8), a
+# much heavier load that isn't bundled with the library.
+
+interpolation:
+  raw_mrms_dir: ../sample_data/mpas_case/mrms
+  interp_mrms_dir: output/interp_mrms_smoketest
+  target_grid_file: ../sample_data/mpas_case/mpas_mem1/interp_mpas_3km_2023050100_mem1_f001.nc
+  target_lat_name: latitude
+  target_lon_name: longitude
+  n_workers: 2
+  weight_cache_dir: output/weight_cache
+  date_range: null                 # bundled sample only has one day (2023-05-01), take everything found
+  max_files: null
+
+observations:
+  file_format: netcdf
+  var_name: refl_consv
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: output/interp_mrms_smoketest
+  object_output_dir: output/obj_mrms_smoketest
+  boundary_threshold: 40.0
+  max_value_threshold: 45.0
+  area_threshold_km2: 108.0
+  mask: none
+  track: true
+  track_distance_km: 0.0
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

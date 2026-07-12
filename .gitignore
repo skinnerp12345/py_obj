@@ -1,0 +1,11 @@
+# Regenerable pipeline run output/cache -- never commit, always safe to delete
+configs/output/
+tests/_weight_cache/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS
+.DS_Store

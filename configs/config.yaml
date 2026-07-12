@@ -1,0 +1,122 @@
+# Unified config for the whole pipeline family: interpolation, MRMS object
+# ID/tracking, model/forecast object ID/tracking, and matching. Loaded via
+# python_obj.config.load_config(path) -> Config.
+#
+# Every section below is INDEPENDENTLY OPTIONAL -- populate only the ones
+# relevant to your problem. A driver script (python_obj/drivers/) reads only
+# the section(s) it needs and raises a clear error if a section IT requires
+# is missing; omitting a section this driver doesn't use is never an error.
+# See configs/config_smoketest.yaml and configs/config_ensemble.yaml for
+# examples that only populate a subset of sections.
+#
+# Paths are resolved relative to THIS FILE's own directory, not the current
+# working directory -- so these scripts behave the same regardless of where
+# you run them from.
+#
+# As shipped, this file's sections chain together end to end: interpolation
+# writes to output/interp_mrms, observations reads that same directory and
+# writes objects to output/obj_mrms, model writes objects to
+# output/obj_model_ensemble, and matching reads both object directories --
+# running all four drivers against this one file in sequence is a complete,
+# self-consistent walkthrough.
+
+interpolation:
+  raw_mrms_dir: ../../test_mrms                # raw native-grid MRMS GRIB2, YYYYMMDD/ subdirs
+  interp_mrms_dir: output/interp_mrms        # where interpolated NetCDF files are written
+  target_grid_file: ../../test_mpas/mem1/interp_mpas_3km_2023050100_mem1_f000.nc
+  target_lat_name: latitude
+  target_lon_name: longitude
+  n_workers: 8
+  weight_cache_dir: output/weight_cache
+  date_range: ["20230401", "20230402"]        # inclusive YYYYMMDD range; set to null for everything found
+  max_files: null                             # cap file count after discovery/date filtering; null = no cap
+
+observations:
+  file_format: netcdf          # netcdf | grib2 -- selects the loader
+  var_name: refl_consv          # matches the interpolated-MRMS output convention
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: output/interp_mrms   # Step 2's input -- same dir interpolation writes to above
+  object_output_dir: output/obj_mrms
+  boundary_threshold: 40.0      # initial object-boundary ID threshold (dBZ)
+  max_value_threshold: 45.0     # stricter threshold an object's peak must exceed to be retained (dBZ)
+  area_threshold_km2: 108.0
+  mask: conus_east               # none | conus | conus_east
+  track: false
+  track_distance_km: 0.0         # 0.0 = touching/overlapping only, matching legacy behavior
+  file_grouping: single           # single | member_series | ensemble_snapshot | full
+                                   #   single: one file per output time (typical for observations)
+                                   #   member_series: one file per member, all its times consolidated
+                                   #   ensemble_snapshot: one file per time, all members consolidated
+                                   #   full: one file, all members x all times consolidated
+
+model:
+  input_dir: ../../test_mpas
+  member_subdirs: true                        # true = one member per immediate subdirectory of input_dir
+  file_pattern: "*_f0[01]?.nc"                # restrict to f000-f012 (13 hourly times)
+  object_output_dir: output/obj_model_ensemble
+  file_format: netcdf
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  boundary_threshold: 45.0       # python_base/object_matcher_mpas.py's actual MPAS threshold
+  max_value_threshold: 50.2      # (corrected -- earlier ad-hoc test scripts had mistakenly
+                                   # used object_matcher_wofscast.py's 39.8/45.6 pair instead)
+  area_threshold_km2: 108.0
+  mask: conus_east
+  track: false
+  track_distance_km: 0.0
+  file_grouping: ensemble_snapshot
+  init_attr: initializationTime   # model-only: global attrs used to derive valid_time
+  lead_attr: forecastHour          # name of the global attribute holding the lead-time NUMBER
+  lead_units: hours                 # the UNIT THAT NUMBER IS ALREADY IN -- not the model's
+                                     # output cadence. Check the raw attribute value in one of
+                                     # your files and match its unit:
+                                     #   MPAS forecastHour=12          -> lead_units: hours
+                                     #   a 5-min-cadence model storing forecast_minute=35
+                                     #                                  -> lead_units: minutes
+                                     #   a model storing lead_seconds=1800
+                                     #                                  -> lead_units: seconds
+                                     # valid_time = init_time + timedelta(**{lead_units: value})
+  init_format: "%Y%m%d%H"
+
+matching:
+  truth_object_dir: output/obj_mrms              # same dir observations writes to above
+  forecast_object_dir: output/obj_model_ensemble  # same dir model writes to above
+  output_dir: output/matches
+  file_pattern: "*.nc"
+  max_boundary_disp_km: 40.0
+  max_centroid_disp_km: 40.0
+  ti_threshold: 0.2
+  max_time_offset_minutes: 5.0  # max allowed truth/forecast valid_time mismatch when pairing files
+
+# Shared, not per-source: object shape/linearity is a property of the storm's
+# own footprint, not a per-source dBZ calibration value like the thresholds
+# above. Two independent tiers, checked strict-first: an object meeting the
+# linear_* thresholds is "linear"; failing that but meeting the mixed_*
+# thresholds is "mixed"; meeting neither is "cellular".
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
+
+# Fetch MRMS observations from the public noaa-mrms-pds AWS archive to match
+# a directory of model files' valid times -- e.g. WoFS, which has no local
+# matching MRMS data yet. Exactly one of two time-derivation modes must be
+# given: a ready-made valid_time STRING attribute (valid_time_attr +
+# valid_time_format, WoFS's convention), or init+lead arithmetic (init_attr +
+# lead_attr + lead_units + init_format, MPAS's convention) -- whichever this
+# model's own files actually use.
+fetch_mrms:
+  model_input_dir: ../../test_wofs
+  file_pattern: "*.nc"
+  output_dir: output/fetched_mrms_wofs
+  valid_time_attr: valid_time
+  valid_time_format: "%Y%m%d_%H%M%S"
+  tolerance_minutes: 2.5   # MRMS's real ~2-min cadence has irregular seconds jitter
+  s3_bucket: noaa-mrms-pds
+  mrms_product: MergedReflectivityQCComposite_00.50
+  mirror_subdirs: true
+  skip_existing: true
+  max_files: null
