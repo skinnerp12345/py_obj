@@ -36,9 +36,26 @@ out of its original repository and used standalone.
 ## Installation
 
 ```bash
+git clone https://github.com/skinnerp12345/py_obj.git
+cd py_obj
+
 conda env create -f environment.yml
 conda activate python_obj_env
+
+pip install -e . --no-deps
 ```
+
+The `pip install -e .` step matters and is not optional: every module in this
+library imports itself as `python_obj.xxx` (e.g. `from python_obj.config
+import load_config`), but this GitHub repo is named `py_obj`, so a plain `git
+clone` checks out a folder called `py_obj`, not `python_obj`. Without the
+`pip install -e .` step, every script fails with `ModuleNotFoundError: No
+module named 'python_obj'`, regardless of what your current directory is
+named or which folder you run scripts from. `pip install -e .` (using the
+`pyproject.toml` bundled in this repo) registers this checkout as the
+importable package `python_obj` directly in your `python_obj_env`
+environment, independent of the checkout folder's own name — so it only
+needs to be run once per environment, not once per clone location.
 
 ## Quick start
 

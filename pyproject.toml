@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_obj"
+version = "0.1.0"
+description = "Object-based thunderstorm verification library: identification, tracking, and matching via Total Interest score."
+requires-python = ">=3.10"
+
+# Maps the importable package name "python_obj" to wherever this repo happens
+# to be checked out, regardless of what the containing folder is actually
+# named (e.g. GitHub's default clone folder name matches the repo name,
+# "py_obj", not the package's own import name "python_obj" -- installing via
+# `pip install -e .` decouples the two, so every `import python_obj...`
+# statement in drivers/tests/notebooks resolves correctly no matter what the
+# clone folder is called or what directory a script is run from).
+[tool.setuptools]
+package-dir = {"python_obj" = "."}
+packages = [
+    "python_obj",
+    "python_obj.obj_core",
+    "python_obj.regrid",
+    "python_obj.drivers",
+]
