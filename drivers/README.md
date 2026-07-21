@@ -183,6 +183,16 @@ for MRMS, exactly -35.0 dBZ for MPAS). MRMS's `-999` "no coverage" sentinel
 is still excluded outright (never clamped in as fake data) via the file's
 own `_FillValue`, which this driver passes through automatically.
 
+`histogram_observations.mask`/`histogram_model.mask` (default `"none"`,
+same `none | conus | conus_east` values as `observations.mask`/`model.mask`)
+restrict the histogram to the same spatial domain used for object ID --
+computed once from the first file's own lat/lon and reused across every
+slice. Unlike the object-ID pipeline (which zeroes masked cells, since 0
+dBZ never trips a storm threshold there), masked histogram cells are set to
+NaN and excluded from the distribution entirely -- zeroing them would
+inject fake clear-air counts into exactly the part of the distribution the
+fixed-range design above is trying to keep uncontaminated.
+
 ## `build_histogram_model.py`
 
 Builds one distribution histogram for **one whole forecast** (every lead

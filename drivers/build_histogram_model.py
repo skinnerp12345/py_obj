@@ -27,6 +27,7 @@ import sys
 from datetime import datetime
 
 import netCDF4
+import numpy as np
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
@@ -34,7 +35,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from python_obj.config import HistogramModelConfig, load_config, require_section
 from python_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
-from python_obj.obj_core import build_model_manifest
+from python_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
 
 _LEAD_UNITS_TO_HOURS = {"hours": 1.0, "minutes": 1.0 / 60.0, "seconds": 1.0 / 3600.0}
 
@@ -83,6 +84,20 @@ def run_one_case(config_path: str) -> str:
         f"by {hist_cfg.bin_width}, edge_trim={hist_cfg.edge_trim}, clip_negative_to_zero={hist_cfg.clip_negative_to_zero}"
     )
 
+    # mask is computed once from the first manifest entry's own lat/lon (a
+    # fixed grid across the whole series, same assumption identify_track_model.py
+    # makes) and applied as NaN, NOT the 0.0 the object-ID pipeline uses -- a
+    # masked cell must be excluded from the distribution entirely, not
+    # counted as a fake clear-air reading (compute_histogram already excludes
+    # NaN via its existing np.isfinite filter, so no core histogram code
+    # changes needed).
+    mask = None
+    if hist_cfg.mask != "none":
+        first = loader(manifest[0].filepath, extra_dim_index=manifest[0].extra_dim_index)
+        mask_fn = conus_mask_east if hist_cfg.mask == "conus_east" else conus_mask
+        mask = mask_fn(first.lat2d, first.lon2d)
+        print(f"Mask '{hist_cfg.mask}' excludes {mask.mean() * 100:.1f}% of grid cells")
+
     slices = []
     source_files = sorted({entry.filepath for entry in manifest})
     lead_hours_by_file: dict[str, float | None] = {
@@ -90,8 +105,9 @@ def run_one_case(config_path: str) -> str:
     }
     for entry in manifest:
         field = loader(entry.filepath, extra_dim_index=entry.extra_dim_index)
+        data = field.data if mask is None else np.where(mask, np.nan, field.data)
         counts = compute_histogram(
-            field.data, bins, edge_trim=hist_cfg.edge_trim, clip_negative_to_zero=hist_cfg.clip_negative_to_zero,
+            data, bins, edge_trim=hist_cfg.edge_trim, clip_negative_to_zero=hist_cfg.clip_negative_to_zero,
             missing_value=field.missing_value,
         )
         slices.append(HistogramSlice(

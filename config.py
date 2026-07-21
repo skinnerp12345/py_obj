@@ -158,13 +158,16 @@ class FetchMrmsConfig:
 class HistogramObservationConfig:
     """Recipe for build_histogram_mrms.py: builds one reflectivity-
     distribution histogram file per YYYYMMDD day of already-interpolated
-    MRMS. Self-contained (not reusing ObservationConfig), since object-ID
-    fields (thresholds/masking/tracking) are irrelevant here."""
+    MRMS. Self-contained (not reusing ObservationConfig), since most
+    object-ID fields (thresholds/tracking) are irrelevant here -- mask is
+    the one exception, reused as-is (none|conus|conus_east) since it
+    describes the same spatial domain restriction either way."""
     interp_mrms_dir: str
     var_name: str = "refl_consv"
     lat_name: str = "lat"
     lon_name: str = "lon"
     output_dir: str = "output/hist_mrms"
+    mask: str = "none"
     bin_min: float = -20.0
     bin_max: float = 80.0
     bin_width: float = 0.2
@@ -199,6 +202,7 @@ class HistogramModelConfig:
     # all carry a same-format init_time="20260518_230000" alongside valid_time).
     init_time_attr: str = "init_time"
     output_dir: str = "output/hist_model"
+    mask: str = "none"
     bin_min: float = -20.0
     bin_max: float = 80.0
     bin_width: float = 0.2
@@ -450,12 +454,14 @@ def load_config(path: str) -> Config:
     hist_obs_section = _section("histogram_observations")
     if hist_obs_section is not None:
         _require_fields(hist_obs_section, "histogram_observations", ("interp_mrms_dir",))
+        _check_allowed(hist_obs_section, "histogram_observations", "mask", _VALID_MASKS)
         histogram_observations = HistogramObservationConfig(
             interp_mrms_dir=hist_obs_section["interp_mrms_dir"],
             var_name=hist_obs_section.get("var_name", "refl_consv"),
             lat_name=hist_obs_section.get("lat_name", "lat"),
             lon_name=hist_obs_section.get("lon_name", "lon"),
             output_dir=hist_obs_section.get("output_dir", "output/hist_mrms"),
+            mask=hist_obs_section.get("mask", "none"),
             bin_min=hist_obs_section.get("bin_min", -20.0),
             bin_max=hist_obs_section.get("bin_max", 80.0),
             bin_width=hist_obs_section.get("bin_width", 0.2),
@@ -469,6 +475,7 @@ def load_config(path: str) -> Config:
     if hist_model_section is not None:
         _require_fields(hist_model_section, "histogram_model", ("input_dir",))
         _validate_time_mode(hist_model_section, "histogram_model")
+        _check_allowed(hist_model_section, "histogram_model", "mask", _VALID_MASKS)
         histogram_model = HistogramModelConfig(
             input_dir=hist_model_section["input_dir"],
             var_name=hist_model_section.get("var_name", "refl10cm_max"),
@@ -486,6 +493,7 @@ def load_config(path: str) -> Config:
             valid_time_format=hist_model_section.get("valid_time_format"),
             init_time_attr=hist_model_section.get("init_time_attr", "init_time"),
             output_dir=hist_model_section.get("output_dir", "output/hist_model"),
+            mask=hist_model_section.get("mask", "none"),
             bin_min=hist_model_section.get("bin_min", -20.0),
             bin_max=hist_model_section.get("bin_max", 80.0),
             bin_width=hist_model_section.get("bin_width", 0.2),

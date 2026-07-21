@@ -92,6 +92,7 @@ histogram_model:
   lead_units: hours
   init_format: "%Y%m%d%H"
   output_dir: output/hist_model_mpas
+  mask: conus_east   # same domain restriction as model:'s own mask above
   # bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero omitted --
   # library defaults (-20 to 80 by 0.2 dBZ, edge_trim=7, clip off) already fit
 

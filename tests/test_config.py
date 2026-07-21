@@ -340,6 +340,7 @@ def test_hand_built_config_matches_yaml_round_trip():
             member_subdirs=True, file_pattern="*.nc",
             init_attr="initializationTime", lead_attr="forecastHour", init_format="%Y%m%d%H",
             output_dir=_resolved("output/hist_model_mpas"),
+            mask="conus_east",
         ),
     )
 

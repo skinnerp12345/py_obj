@@ -307,3 +307,41 @@ def test_real_build_histogram_drivers_and_matched_percentile(tmp_path):
     print(f"[hist-check6] independent numpy percentile at 40 dBZ: {independent_pct*100:.1f}th "
           f"(histogram-based: {result['source_percentile']*100:.1f}th)")
     assert abs(independent_pct - result["source_percentile"]) < 0.02, "histogram-based and direct percentile estimates should be close"
+
+
+# --- Check 7: domain masking (real end-to-end, conus_east) ------------------
+
+def test_real_mask_excludes_cells_entirely_not_as_fake_clear_air(tmp_path):
+    """Masked cells must be excluded from the histogram entirely (as NaN),
+    not zeroed like the object-ID pipeline does (which would inject fake
+    clear-air counts) -- confirmed by comparing masked vs. unmasked total
+    counts on the same real bundled grid, where conus_east is known (checked
+    directly against the grid) to exclude ~51% of cells, a substantial,
+    real, non-trivial fraction."""
+    from python_obj.drivers import build_histogram_mrms
+
+    unmasked_cfg_path = os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")
+    cfg = load_config(unmasked_cfg_path)  # resolves interp_mrms_dir to an absolute path
+
+    masked_cfg_path = str(tmp_path / "config_masked.yaml")
+    with open(masked_cfg_path, "w") as f:
+        f.write(
+            "histogram_observations:\n"
+            f"  interp_mrms_dir: {cfg.histogram_observations.interp_mrms_dir}\n"
+            f"  var_name: {cfg.histogram_observations.var_name}\n"
+            f"  lat_name: {cfg.histogram_observations.lat_name}\n"
+            f"  lon_name: {cfg.histogram_observations.lon_name}\n"
+            f"  output_dir: {tmp_path / 'hist_mrms_masked'}\n"
+            "  mask: conus_east\n"
+        )
+
+    unmasked_paths = build_histogram_mrms.run_one_case(unmasked_cfg_path)
+    masked_paths = build_histogram_mrms.run_one_case(masked_cfg_path)
+
+    unmasked_total = sum(int(s.hist.sum()) for p in unmasked_paths for s in read_histogram_file(p).slices)
+    masked_total = sum(int(s.hist.sum()) for p in masked_paths for s in read_histogram_file(p).slices)
+    excluded_frac = 1.0 - masked_total / unmasked_total
+    print(f"\n[hist-check7] unmasked total={unmasked_total}, masked (conus_east) total={masked_total}, "
+          f"excluded={excluded_frac*100:.1f}% (expect ~51%, matching the grid's own known conus_east fraction)")
+    assert masked_total < unmasked_total, "masking must strictly reduce the total count -- cells must be excluded, not zeroed in"
+    assert 0.45 < excluded_frac < 0.57
