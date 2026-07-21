@@ -111,6 +111,9 @@ class ModelConfig:
     file_grouping: str = "single"
     lead_units: str = "hours"
     member_subdirs: bool = False
+    member_subdir_pattern: str = "*"  # restricts which subdirectories count as members when
+                                       # member_subdirs=True and input_dir has non-member siblings
+                                       # (e.g. "mem[0-9]*" to skip a sibling like ens_mean_5mems)
     stacked_members: bool = False
     file_pattern: str = "*.nc"
     object_output_dir: str = "output/obj_model"
@@ -180,6 +183,7 @@ class HistogramModelConfig:
     lat_name: str = "latitude"
     lon_name: str = "longitude"
     member_subdirs: bool = False
+    member_subdir_pattern: str = "*"  # see ModelConfig's field of the same name
     stacked_members: bool = False
     file_pattern: str = "*.nc"
     init_attr: str | None = None
@@ -371,6 +375,7 @@ def load_config(path: str) -> Config:
             extra_optional_defaults={
                 "object_output_dir": "output/obj_model",
                 "member_subdirs": False,
+                "member_subdir_pattern": "*",
                 "stacked_members": False,
                 "file_pattern": "*.nc",
                 "init_attr": None,
@@ -470,6 +475,7 @@ def load_config(path: str) -> Config:
             lat_name=hist_model_section.get("lat_name", "latitude"),
             lon_name=hist_model_section.get("lon_name", "longitude"),
             member_subdirs=hist_model_section.get("member_subdirs", False),
+            member_subdir_pattern=hist_model_section.get("member_subdir_pattern", "*"),
             stacked_members=hist_model_section.get("stacked_members", False),
             file_pattern=hist_model_section.get("file_pattern", "*.nc"),
             init_attr=hist_model_section.get("init_attr"),

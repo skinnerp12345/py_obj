@@ -91,6 +91,14 @@ series. Set `true` for an ensemble: `input_dir` must then contain one
 immediate subdirectory per member (e.g. `mem1/`, `mem2/`, matching the real
 `test_mpas/mem1/`, `test_mpas/mem2/` convention) — the subdirectory name
 becomes each member's `member_id`, nothing is parsed from filenames.
+`model.member_subdir_pattern` (default `"*"`, every subdirectory) restricts
+*which* subdirectories count as members when `member_subdirs: true` and
+`input_dir` has non-member siblings — confirmed real on an NCAR HPC MPAS
+archive with `mem1`-`mem10` alongside an unrelated `ens_mean_5mems`
+directory at the same level: the default discovers every subdirectory, so
+the first non-member one with no matching files raises `FileNotFoundError`.
+Set e.g. `member_subdir_pattern: "mem[0-9]*"` to restrict discovery to only
+directories whose name starts with `mem` followed by a digit.
 `model.lead_units` is the unit `lead_attr`'s raw stored number is already
 in, NOT a description of your model's output cadence (MPAS's hourly output
 happens to store `forecastHour` in hours; a 5-minute-cadence model isn't

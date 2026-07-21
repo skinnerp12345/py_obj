@@ -16,6 +16,7 @@ import yaml
 from python_obj.config import (
     Config,
     FetchMrmsConfig,
+    HistogramModelConfig,
     InterpolationConfig,
     LinearClassificationConfig,
     MatchingConfig,
@@ -332,6 +333,13 @@ def test_hand_built_config_matches_yaml_round_trip():
             tolerance_minutes=2.5, s3_bucket="noaa-mrms-pds",
             mrms_product="MergedReflectivityQCComposite_00.50",
             mirror_subdirs=True, skip_existing=True, max_files=None,
+        ),
+        histogram_model=HistogramModelConfig(
+            input_dir=_resolved("../../test_mpas"),
+            var_name="refl10cm_max", lat_name="latitude", lon_name="longitude",
+            member_subdirs=True, file_pattern="*.nc",
+            init_attr="initializationTime", lead_attr="forecastHour", init_format="%Y%m%d%H",
+            output_dir=_resolved("output/hist_model_mpas"),
         ),
     )
 

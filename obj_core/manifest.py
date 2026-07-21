@@ -29,15 +29,22 @@ def build_model_manifest(
     init_format: str | None = None,
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
+    member_subdir_pattern: str = "*",
 ) -> tuple[list[SeriesEntry], Callable[..., object]]:
     """Build the (member, time, filepath) manifest run_object_id_series (or
     the histogram driver) needs, plus a matching loader closure.
 
     member_subdirs=True: one member per immediate subdirectory of input_dir
-    (member_id = subdirectory basename), mirroring the real test_mpas/mem1/,
-    test_mpas/mem2/ layout -- not parsed from any filename convention, since
-    a model's own ensemble-naming scheme is the caller's business, not this
-    pipeline's.
+    matching member_subdir_pattern (member_id = subdirectory basename),
+    mirroring the real test_mpas/mem1/, test_mpas/mem2/ layout -- not parsed
+    from any filename convention, since a model's own ensemble-naming scheme
+    is the caller's business, not this pipeline's. member_subdir_pattern
+    (default "*", i.e. every subdirectory) exists because a real archive's
+    input_dir can hold non-member sibling directories alongside the real
+    per-member ones (confirmed real: an NCAR HPC MPAS archive with mem1-mem10
+    plus an unrelated ens_mean_5mems directory at the same level) -- without
+    a name filter, the first non-member subdirectory with no matching files
+    raises FileNotFoundError.
 
     stacked_members=True: each file contains ALL members stacked as a real
     array dimension (e.g. WoFS's comp_dz(ne=18, lat, lon), one file per
@@ -66,10 +73,12 @@ def build_model_manifest(
 
     if member_subdirs:
         member_dirs = sorted(
-            d for d in glob.glob(os.path.join(input_dir, "*")) if os.path.isdir(d)
+            d for d in glob.glob(os.path.join(input_dir, member_subdir_pattern)) if os.path.isdir(d)
         )
         if not member_dirs:
-            raise FileNotFoundError(f"member_subdirs=True but no subdirectories found under '{input_dir}'")
+            raise FileNotFoundError(
+                f"member_subdirs=True but no subdirectories matching '{member_subdir_pattern}' found under '{input_dir}'"
+            )
         for member_dir in member_dirs:
             member_id = os.path.basename(os.path.normpath(member_dir))
             files = sorted(glob.glob(os.path.join(member_dir, file_pattern)))

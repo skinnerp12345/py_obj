@@ -72,6 +72,7 @@ def run_one_case(config_path: str) -> str:
         init_attr=hist_cfg.init_attr, lead_attr=hist_cfg.lead_attr, lead_units=hist_cfg.lead_units,
         init_format=hist_cfg.init_format,
         valid_time_attr=hist_cfg.valid_time_attr, valid_time_format=hist_cfg.valid_time_format,
+        member_subdir_pattern=hist_cfg.member_subdir_pattern,
     )
     print(
         f"Found {len(manifest)} manifest entries under '{hist_cfg.input_dir}' "

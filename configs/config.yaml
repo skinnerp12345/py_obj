@@ -80,6 +80,21 @@ model:
                                      # valid_time = init_time + timedelta(**{lead_units: value})
   init_format: "%Y%m%d%H"
 
+histogram_model:
+  input_dir: ../../test_mpas
+  member_subdirs: true          # true = one member per immediate subdirectory of input_dir (mem1/, mem2/)
+  file_pattern: "*.nc"          # all 23 lead times (f000-f132), unlike model:'s f000-f012 restriction above
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  output_dir: output/hist_model_mpas
+  # bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero omitted --
+  # library defaults (-20 to 80 by 0.2 dBZ, edge_trim=7, clip off) already fit
+
 matching:
   truth_object_dir: output/obj_mrms              # same dir observations writes to above
   forecast_object_dir: output/obj_model_ensemble  # same dir model writes to above
