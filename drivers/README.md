@@ -14,7 +14,7 @@ The `pysteps_env` conda environment is required for all of these:
 
 ## The config file
 
-`python_obj/configs/config.yaml` has five independently optional top-level sections:
+`python_obj/configs/config.yaml` has independently optional top-level sections:
 
 | Section | Used by | Required fields |
 |---|---|---|
@@ -24,6 +24,8 @@ The `pysteps_env` conda environment is required for all of these:
 | `matching:` | `run_matching.py` | `max_boundary_disp_km`, `max_centroid_disp_km`, `ti_threshold`, `truth_object_dir`, `forecast_object_dir` |
 | `linear_classification:` | `identify_track_mrms.py`, `identify_track_model.py` | all four threshold fields |
 | `fetch_mrms:` | `fetch_mrms.py` | `model_input_dir`, `output_dir`, and either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format` |
+| `histogram_observations:` | `build_histogram_mrms.py`, `aggregate_histograms.py` | `interp_mrms_dir` |
+| `histogram_model:` | `build_histogram_model.py`, `aggregate_histograms.py` | `input_dir`, and either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format` |
 
 Every other field has a documented default — see the comments in
 `python_obj/configs/config.yaml` for the full field list. Paths are resolved relative
@@ -141,6 +143,81 @@ same layout `test_mrms/` and `discover_mrms_files()`/`interpolate_mrms.py`
 already use — point `interpolation.raw_mrms_dir` at the fetched
 `output_dir` to interpolate them with zero further changes.
 
+## `build_histogram_mrms.py`
+
+Builds a composite-reflectivity (or any configured variable) distribution
+histogram for **each day** of already-interpolated MRMS -- generalizes
+`python_base/mrms_dz_histogram_base.py` (configurable bins/variable instead
+of hardcoded). Requires `histogram_observations:`.
+
+```bash
+/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms.py [path/to/config.yaml]
+```
+
+Groups `histogram_observations.interp_mrms_dir` by its `YYYYMMDD`
+day-subdirectories and writes **one histogram file per day** under
+`histogram_observations.output_dir`. Each file preserves one histogram
+*slice* per input file (tagged with that file's real `valid_time`) rather
+than collapsing straight to one flat total -- this is what lets
+`aggregate_histograms.py` subset by hour of day afterward. Default bins:
+-20 to 80 dBZ by 0.2; default `edge_trim=7` pixels off each border (avoids
+regridding-edge artifacts, ported from the original script's hardcoded
+`edge=7`); `clip_negative_to_zero` is off by default (the original WoFS-side
+scripts did this silently -- here it's an explicit opt-in).
+
+Bins are a fixed range with no clear-air/no-echo bin excluded: every valid
+pixel is counted, including clear air, and any real value outside
+`[bin_min, bin_max]` is clamped into the nearest edge bin rather than
+dropped -- so two histograms built from the same grid/`edge_trim` always
+carry equal total gridpoint counts, regardless of where a given source's
+own clear-air floor happens to sit (confirmed to vary by source: ~0.0 dBZ
+for MRMS, exactly -35.0 dBZ for MPAS). MRMS's `-999` "no coverage" sentinel
+is still excluded outright (never clamped in as fake data) via the file's
+own `_FillValue`, which this driver passes through automatically.
+
+## `build_histogram_model.py`
+
+Builds one distribution histogram for **one whole forecast** (every lead
+time, every member if an ensemble) -- generalizes
+`python_base/wofs_dz_histogram_base.py`/`wofs_dz_histogram_wofscast.py`.
+Requires `histogram_model:`. File discovery reuses the same
+`python_obj.obj_core.build_model_manifest` `identify_track_model.py` itself
+uses (same `member_subdirs`/`stacked_members`/`file_pattern` semantics).
+
+```bash
+/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_model.py [path/to/config.yaml]
+```
+
+Writes **one histogram file for the whole forecast** under
+`histogram_model.output_dir`, with one slice per (member, lead-time)
+combination -- tagged with real `valid_time`, `lead_hours`, and `member_id`.
+`lead_hours` is read directly from `lead_attr` (already a lead-time number)
+in the `init_attr`/`lead_attr` time-mode, or computed from the difference
+between `init_time_attr` and `valid_time_attr` (same string format) in the
+`valid_time_attr` time-mode.
+
+## `aggregate_histograms.py`
+
+Demonstrates subsetting the output of the two drivers above -- an
+hour-of-day MRMS climatology, a forecast-lead-hour-bucketed ("day N of the
+forecast") model subset -- then a real matched-percentile-threshold
+computation between the two full distributions: generalizes
+`python_base/wofs_dz_histogram_plotter.py`'s threshold-matching method
+(find a source value's percentile, find the target distribution's value at
+that same percentile) into a reusable function
+(`python_obj.histogram.match_percentile_threshold`). Requires
+`histogram_observations:` + `histogram_model:` (reads their own
+`output_dir`s to find the histogram files to aggregate).
+
+```bash
+/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/aggregate_histograms.py [path/to/config.yaml] [source_threshold_dbz]
+```
+
+For programmatic/notebook use, `python_obj.histogram.sum_histograms(paths,
+predicate=...)` with `by_hour_of_day(hours)`/`by_lead_hours_range(min, max)`
+is the reusable building block this driver is a thin wrapper over -- see
+`notebooks/histogram_tutorial.ipynb`.
+
 ## Running many cases in parallel
 
 Each driver has a `_batch.py` companion (`interpolate_mrms_batch.py`,
@@ -175,4 +252,13 @@ objs = read_object_file("python_obj/configs/output/obj_mrms/obj_obs_20230401_010
 matches = read_match_file("python_obj/configs/output/matches/match_20230501_030000.nc")
 for r in matches.records:
     print(r.category, r.truth_id, r.forecast_id, r.ti_score)
+
+from python_obj.histogram import read_histogram_file, sum_histograms, by_hour_of_day
+
+hist = read_histogram_file("python_obj/configs/output/hist_mrms/hist_mrms_20230501.nc")
+for s in hist.slices:
+    print(s.valid_time, s.lead_hours, s.member_id, s.hist.sum())  # lead_hours/member_id are None for MRMS
+
+bins, total = sum_histograms(["hist_mrms_20230501.nc", "hist_mrms_20230502.nc"], predicate=by_hour_of_day(18))
+# total -> summed bin counts for every slice valid at 18Z across both days
 ```

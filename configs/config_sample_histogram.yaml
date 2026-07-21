@@ -1,0 +1,31 @@
+# SAMPLE CONFIG -- used by python_obj/notebooks/histogram_tutorial.ipynb:
+# builds a per-day MRMS composite-reflectivity distribution and a per-forecast
+# MPAS distribution from the bundled sample_data/mpas_case/ (the same real
+# data config_sample_mpas.yaml uses), then demonstrates subsetting (an
+# hour-of-day MRMS climatology, a forecast-lead-hour bucket) and a real
+# matched-percentile threshold between the two.
+#
+# histogram_observations/histogram_model are self-contained recipes (no
+# thresholds/masking/tracking fields -- those are object-ID concepts,
+# irrelevant here). bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero
+# all default to the library's own defaults (-20 to 80 by 0.2 dBZ, edge_trim=7,
+# clip off) and are omitted below since the defaults already fit this sample.
+
+histogram_observations:
+  interp_mrms_dir: ../sample_data/mpas_case/interp_mrms   # parent of the 20230501/ day-subdirectory
+  var_name: refl_consv
+  lat_name: lat
+  lon_name: lon
+  output_dir: output/hist_mrms_sample
+
+histogram_model:
+  input_dir: ../sample_data/mpas_case/mpas_mem1
+  file_pattern: "*_f00[1-3].nc"   # excludes the f048 file also bundled there (used only by the test suite)
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  output_dir: output/hist_model_sample

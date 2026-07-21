@@ -52,6 +52,8 @@ _OBSERVATIONS_PATH_FIELDS = ("interp_mrms_dir", "object_output_dir")
 _MODEL_PATH_FIELDS = ("input_dir", "object_output_dir")
 _MATCHING_PATH_FIELDS = ("truth_object_dir", "forecast_object_dir", "output_dir")
 _FETCH_MRMS_PATH_FIELDS = ("model_input_dir", "output_dir")
+_HISTOGRAM_OBSERVATIONS_PATH_FIELDS = ("interp_mrms_dir", "output_dir")
+_HISTOGRAM_MODEL_PATH_FIELDS = ("input_dir", "output_dir")
 
 
 @dataclass
@@ -150,6 +152,57 @@ class FetchMrmsConfig:
 
 
 @dataclass
+class HistogramObservationConfig:
+    """Recipe for build_histogram_mrms.py: builds one reflectivity-
+    distribution histogram file per YYYYMMDD day of already-interpolated
+    MRMS. Self-contained (not reusing ObservationConfig), since object-ID
+    fields (thresholds/masking/tracking) are irrelevant here."""
+    interp_mrms_dir: str
+    var_name: str = "refl_consv"
+    lat_name: str = "lat"
+    lon_name: str = "lon"
+    output_dir: str = "output/hist_mrms"
+    bin_min: float = -20.0
+    bin_max: float = 80.0
+    bin_width: float = 0.2
+    edge_trim: int = 7
+    clip_negative_to_zero: bool = False
+
+
+@dataclass
+class HistogramModelConfig:
+    """Recipe for build_histogram_model.py: builds one reflectivity-
+    distribution histogram file for one whole forecast (every lead time,
+    every member if ensemble). Self-contained (not reusing ModelConfig), for
+    the same reason as HistogramObservationConfig above."""
+    input_dir: str
+    var_name: str = "refl10cm_max"
+    lat_name: str = "latitude"
+    lon_name: str = "longitude"
+    member_subdirs: bool = False
+    stacked_members: bool = False
+    file_pattern: str = "*.nc"
+    init_attr: str | None = None
+    lead_attr: str | None = None
+    lead_units: str = "hours"
+    init_format: str | None = None
+    valid_time_attr: str | None = None
+    valid_time_format: str | None = None
+    # Only used to derive lead_hours in the valid_time_attr time-mode (the
+    # init_attr/lead_attr mode already has a direct lead-time number to read
+    # instead) -- the name of the file's own init-time string attribute,
+    # read with the same valid_time_format (e.g. WoFS/NowcastNet/StormScope
+    # all carry a same-format init_time="20260518_230000" alongside valid_time).
+    init_time_attr: str = "init_time"
+    output_dir: str = "output/hist_model"
+    bin_min: float = -20.0
+    bin_max: float = 80.0
+    bin_width: float = 0.2
+    edge_trim: int = 7
+    clip_negative_to_zero: bool = False
+
+
+@dataclass
 class LinearClassificationConfig:
     linear_eccentricity_threshold: float
     linear_length_threshold_km: float
@@ -165,6 +218,8 @@ class Config:
     matching: MatchingConfig | None = None
     linear_classification: LinearClassificationConfig | None = None
     fetch_mrms: FetchMrmsConfig | None = None
+    histogram_observations: HistogramObservationConfig | None = None
+    histogram_model: HistogramModelConfig | None = None
 
 
 def require_section(section, section_name: str, config_path: str):
@@ -386,8 +441,56 @@ def load_config(path: str) -> Config:
         )
         _resolve_paths(fetch_mrms, _FETCH_MRMS_PATH_FIELDS, base_dir)
 
+    histogram_observations = None
+    hist_obs_section = _section("histogram_observations")
+    if hist_obs_section is not None:
+        _require_fields(hist_obs_section, "histogram_observations", ("interp_mrms_dir",))
+        histogram_observations = HistogramObservationConfig(
+            interp_mrms_dir=hist_obs_section["interp_mrms_dir"],
+            var_name=hist_obs_section.get("var_name", "refl_consv"),
+            lat_name=hist_obs_section.get("lat_name", "lat"),
+            lon_name=hist_obs_section.get("lon_name", "lon"),
+            output_dir=hist_obs_section.get("output_dir", "output/hist_mrms"),
+            bin_min=hist_obs_section.get("bin_min", -20.0),
+            bin_max=hist_obs_section.get("bin_max", 80.0),
+            bin_width=hist_obs_section.get("bin_width", 0.2),
+            edge_trim=hist_obs_section.get("edge_trim", 7),
+            clip_negative_to_zero=hist_obs_section.get("clip_negative_to_zero", False),
+        )
+        _resolve_paths(histogram_observations, _HISTOGRAM_OBSERVATIONS_PATH_FIELDS, base_dir)
+
+    histogram_model = None
+    hist_model_section = _section("histogram_model")
+    if hist_model_section is not None:
+        _require_fields(hist_model_section, "histogram_model", ("input_dir",))
+        _validate_time_mode(hist_model_section, "histogram_model")
+        histogram_model = HistogramModelConfig(
+            input_dir=hist_model_section["input_dir"],
+            var_name=hist_model_section.get("var_name", "refl10cm_max"),
+            lat_name=hist_model_section.get("lat_name", "latitude"),
+            lon_name=hist_model_section.get("lon_name", "longitude"),
+            member_subdirs=hist_model_section.get("member_subdirs", False),
+            stacked_members=hist_model_section.get("stacked_members", False),
+            file_pattern=hist_model_section.get("file_pattern", "*.nc"),
+            init_attr=hist_model_section.get("init_attr"),
+            lead_attr=hist_model_section.get("lead_attr"),
+            lead_units=hist_model_section.get("lead_units", "hours"),
+            init_format=hist_model_section.get("init_format"),
+            valid_time_attr=hist_model_section.get("valid_time_attr"),
+            valid_time_format=hist_model_section.get("valid_time_format"),
+            init_time_attr=hist_model_section.get("init_time_attr", "init_time"),
+            output_dir=hist_model_section.get("output_dir", "output/hist_model"),
+            bin_min=hist_model_section.get("bin_min", -20.0),
+            bin_max=hist_model_section.get("bin_max", 80.0),
+            bin_width=hist_model_section.get("bin_width", 0.2),
+            edge_trim=hist_model_section.get("edge_trim", 7),
+            clip_negative_to_zero=hist_model_section.get("clip_negative_to_zero", False),
+        )
+        _resolve_paths(histogram_model, _HISTOGRAM_MODEL_PATH_FIELDS, base_dir)
+
     return Config(
         interpolation=interpolation, observations=observations, model=model,
         matching=matching, linear_classification=linear_classification,
         fetch_mrms=fetch_mrms,
+        histogram_observations=histogram_observations, histogram_model=histogram_model,
     )

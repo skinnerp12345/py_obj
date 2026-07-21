@@ -2,10 +2,12 @@
 
 A small, standalone Python library for object-based thunderstorm verification
 — identifying storm objects (from composite reflectivity), optionally
-tracking them in time, and matching forecast objects against truth
-observations via a Total Interest score. Based on the method in Skinner et
-al. 2025 (WAF-D-24-0238), rebuilt from an earlier duplicated implementation
-into one small, configurable, testable library.
+tracking them in time, matching forecast objects against truth observations
+via a Total Interest score, and building reflectivity-distribution
+histograms for identifying matched-percentile object-ID thresholds across
+sources. Based on the method in Skinner et al. 2025 (WAF-D-24-0238), rebuilt
+from an earlier duplicated implementation into one small, configurable,
+testable library.
 
 Every user-facing decision — remap MRMS onto a model grid or not, mask the
 domain or not, track objects in time or not, single-member or ensemble input,
@@ -20,8 +22,9 @@ MPAS) are bundled as concrete configurations, not as separate code paths.
 python_obj/
   regrid/          conservative MRMS-to-model-grid regridding (xesmf/ESMF)
   obj_core/        object identification, tracking, matching, CONUS masking
+  histogram/       reflectivity-distribution histograms + matched-percentile thresholds
   drivers/         standalone, independently-runnable CLI scripts (see drivers/README.md)
-  notebooks/       two step-by-step tutorial notebooks (see notebooks/README.md)
+  notebooks/       three step-by-step tutorial notebooks (see notebooks/README.md)
   configs/         one shared YAML config schema + example/sample config files
   sample_data/     small, real, bundled MRMS/MPAS/WoFS data for the tests and tutorials
   tests/           pytest suite, self-contained (uses only sample_data/)
@@ -67,9 +70,10 @@ python drivers/interpolate_mrms.py configs/config_smoketest.yaml
 python drivers/identify_track_mrms.py configs/config_smoketest.yaml
 ```
 
-Or open one of the two tutorial notebooks (`notebooks/wofs_tutorial.ipynb`,
-`notebooks/mpas_tutorial.ipynb`) for a full step-by-step walkthrough with
-real, already-executed output — see `notebooks/README.md`.
+Or open one of the three tutorial notebooks (`notebooks/wofs_tutorial.ipynb`,
+`notebooks/mpas_tutorial.ipynb`, `notebooks/histogram_tutorial.ipynb`) for a
+full step-by-step walkthrough with real, already-executed output — see
+`notebooks/README.md`.
 
 Run the test suite:
 
@@ -88,13 +92,13 @@ large to bundle, and are meant as "bring your own larger dataset" references
 
 ## Configuration
 
-One shared YAML config file, five independently optional top-level sections
+One shared YAML config file, independently optional top-level sections
 (`interpolation`, `observations`, `model`, `matching`, `linear_classification`,
-plus `fetch_mrms`). Populate only the sections your problem needs; each
-driver script reads only the section(s) it requires and raises a clear error
-naming which section is missing, rather than guessing. See
-`drivers/README.md` for the full section/field reference and
-`configs/config.yaml` for a fully-populated, chained example.
+`fetch_mrms`, `histogram_observations`, `histogram_model`). Populate only the
+sections your problem needs; each driver script reads only the section(s) it
+requires and raises a clear error naming which section is missing, rather
+than guessing. See `drivers/README.md` for the full section/field reference
+and `configs/config.yaml` for a fully-populated, chained example.
 
 ## License
 

@@ -24,6 +24,7 @@ from .object_io import (
     write_object_file,
 )
 from .id_pipeline import run_object_id_series
+from .manifest import build_model_manifest
 from .matching import MatchRecord, match_objects_one_timestep, total_interest, total_interest_area_ratio
 from .match_io import MatchFileContents, MatchResult, read_match_file, write_match_file
 from .matching_pipeline import MatchingSummary, run_matching_series
@@ -52,6 +53,7 @@ __all__ = [
     "write_object_file",
     "iter_object_slices",
     "run_object_id_series",
+    "build_model_manifest",
     "MatchRecord",
     "match_objects_one_timestep",
     "total_interest",
