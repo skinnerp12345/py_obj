@@ -119,7 +119,7 @@ def run_one_case(config_path: str) -> str:
     anchor_time = min(s.valid_time for s in slices)
     out_path = os.path.join(hist_cfg.output_dir, f"hist_model_{anchor_time:%Y%m%d_%H%M%S}.nc")
     write_histogram_file(
-        out_path, bins, slices, hist_cfg.var_name, hist_cfg.edge_trim, hist_cfg.clip_negative_to_zero, source_files,
+        out_path, bins, slices, hist_cfg.var_name, hist_cfg.edge_trim, hist_cfg.clip_negative_to_zero, len(source_files),
     )
     print(f"  wrote {out_path} ({len(slices)} slices, {sum(s.hist.sum() for s in slices)} total counts)")
 

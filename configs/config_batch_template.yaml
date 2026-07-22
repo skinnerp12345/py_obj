@@ -1,0 +1,35 @@
+# REFERENCE TEMPLATE -- demonstrates python_obj.batch_config.expand_batch_config():
+# ONE config file expands into many per-case config files (one per date),
+# instead of hand-writing one YAML per case. Not runnable as-is (the
+# input_dir below is a real HPC path from an earlier bug report, not
+# anything bundled in this repo) -- copy this file and point input_dir/
+# output_dir at your own archive.
+#
+# The "cases:" section is read only by expand_batch_config() itself --
+# load_config()/run_one_case() never see it, it's purely metadata about how
+# to expand this one template into many materialized configs.
+
+cases:
+  # exactly one of "dates" or "date_range" (inclusive, daily cadence) --
+  # date_range is the common case; use "dates" for a non-contiguous list.
+  date_range: ["20230501", "20230510"]
+  date_format: "%Y%m%d"   # must match both {date} below and date_range's own strings
+
+# Every "{date}" placeholder below gets replaced with each expanded date
+# string in turn. A date whose input_dir doesn't exist (e.g. never
+# initialized) or exists but contains no files (e.g. a crashed run) is
+# skipped and reported -- not an error, and never stops the remaining dates.
+histogram_model:
+  input_dir: /glade/campaign/mmm/parc/schwartz/HWT2023/mpas/{date}00/post
+  member_subdirs: true
+  member_subdir_pattern: "mem[0-9]*"   # skip non-member siblings (e.g. ens_mean_5mems)
+  file_pattern: "*.nc"
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  output_dir: output/hist_model/{date}   # {date} here too, so cases never collide
+  mask: conus_east

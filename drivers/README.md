@@ -240,19 +240,58 @@ is the reusable building block this driver is a thin wrapper over -- see
 
 Each driver has a `_batch.py` companion (`interpolate_mrms_batch.py`,
 `identify_track_mrms_batch.py`, `identify_track_model_batch.py`,
-`run_matching_batch.py`, `fetch_mrms_batch.py`) that runs its sibling's
+`run_matching_batch.py`, `fetch_mrms_batch.py`, `build_histogram_mrms_batch.py`,
+`build_histogram_model_batch.py`) that runs its sibling's
 `run_one_case(config_path)`
 across a list of per-case config files in parallel, via
-`python_obj.batch_runner.run_cases_in_parallel`. Edit the `CASE_CONFIGS`
-list at the top of the script to point at your own config paths — cases are
-never auto-discovered:
+`python_obj.batch_runner.run_cases_in_parallel`:
 
 ```bash
 /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model_batch.py
 ```
 
 Prints a `BatchCaseSummary` (succeeded/failed count, each failing case's own
-error) — one bad case never stops the others.
+error) — one bad case never stops the others. Two ways to populate
+`CASE_CONFIGS` (cases are never auto-discovered from a directory listing —
+one of these two must supply the list explicitly):
+
+**Manual list** — edit `CASE_CONFIGS` at the top of the script to a literal
+list of config paths. Natural for a handful of irregularly-named cases:
+
+```python
+CASE_CONFIGS = [
+    os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_case1.yaml"),
+    os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_case2.yaml"),
+]
+```
+
+**Template expansion** (recommended for the common case: many
+date-named case directories under one parent, e.g. `.../2023051100/`,
+`.../2023051200/`, ...) — one template YAML with a `cases:` section
+(`dates:` or `date_range:`) and a literal `"{date}"` placeholder inside
+whichever fields vary per case, expanded automatically via
+`python_obj.batch_config.expand_batch_config()` (see
+`configs/config_batch_template.yaml` for a full worked example, and
+`batch_config.py`'s module docstring for the exact schema):
+
+```python
+from python_obj.batch_config import expand_batch_config
+expanded = expand_batch_config(
+    template_path=os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_batch_template.yaml"),
+    output_dir=os.path.join(os.path.dirname(_THIS_DIR), "configs", "output", "_batch_configs"),
+)
+CASE_CONFIGS = expanded.case_paths
+```
+
+A date whose case directory doesn't exist at all, or exists but contains no
+files (e.g. a forecast that never ran, or crashed before writing output),
+is skipped and printed — via `expanded.skipped_no_directory`/
+`expanded.skipped_no_files` respectively — rather than raising or silently
+vanishing; the remaining dates still run. Relative paths inside the
+template resolve against the template file's own directory, exactly like
+every other config in this project — this happens *before* `"{date}"`
+substitution, so it's still correct even though the materialized per-case
+files live in a different output directory than the template itself.
 
 ## Reading the output
 

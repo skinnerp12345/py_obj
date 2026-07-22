@@ -1,8 +1,8 @@
-"""Standalone script: run identify_track_model.py's run_one_case() across
-many config files in parallel, e.g. one config per case/init-time.
+"""Standalone script: run build_histogram_mrms.py's run_one_case() across
+many config files in parallel, e.g. one config per MRMS date range/case.
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model_batch.py
+  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms_batch.py
 
 Edit CASE_CONFIGS below to point at your own list of per-case config.yaml
 paths -- this script never discovers cases on its own (see
@@ -17,11 +17,11 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from python_obj.batch_runner import run_cases_in_parallel
-from python_obj.drivers.identify_track_model import run_one_case
+from python_obj.drivers.build_histogram_mrms import run_one_case
 
 CASE_CONFIGS = [
-    # os.path.join(os.path.dirname(_THIS_DIR), "configs", "config.yaml"),
-    # os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_ensemble.yaml"),
+    # os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_case1.yaml"),
+    # os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_case2.yaml"),
 ]
 
 # -- OR: expand ONE template config (with a "cases:" section + "{date}"

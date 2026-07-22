@@ -34,7 +34,9 @@ class HistogramFileContents:
     varname: str
     edge_trim: int
     clip_negative_to_zero: bool
-    source_files: list[str]
+    n_source_files: int  # count, not the file list itself -- a large ensemble/long
+                          # forecast can pool hundreds of source files into one
+                          # histogram file, and the full path list isn't otherwise used
 
 
 def _dt_to_seconds(dt: datetime) -> float:
@@ -54,7 +56,7 @@ def write_histogram_file(
     varname: str,
     edge_trim: int,
     clip_negative_to_zero: bool,
-    source_files: list[str],
+    n_source_files: int,
 ) -> None:
     if not slices:
         raise ValueError("write_histogram_file: slices must be non-empty")
@@ -96,7 +98,7 @@ def write_histogram_file(
         ds.varname = varname
         ds.edge_trim = edge_trim
         ds.clip_negative_to_zero = int(clip_negative_to_zero)
-        ds.source_files = ";".join(source_files)
+        ds.n_source_files = n_source_files
 
 
 def read_histogram_file(path: str) -> HistogramFileContents:
@@ -129,5 +131,5 @@ def read_histogram_file(path: str) -> HistogramFileContents:
             varname=str(ds.varname),
             edge_trim=int(ds.edge_trim),
             clip_negative_to_zero=bool(ds.clip_negative_to_zero),
-            source_files=str(ds.source_files).split(";"),
+            n_source_files=int(ds.n_source_files),
         )

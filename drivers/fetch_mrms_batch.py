@@ -24,6 +24,18 @@ CASE_CONFIGS = [
     # os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_case2.yaml"),
 ]
 
+# -- OR: expand ONE template config (with a "cases:" section + "{date}"
+# placeholders) into many per-case config files automatically, instead of
+# hand-writing one per case -- see python_obj/batch_config.py's module
+# docstring for the template schema:
+#
+# from python_obj.batch_config import expand_batch_config
+# expanded = expand_batch_config(
+#     template_path=os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_batch_template.yaml"),
+#     output_dir=os.path.join(os.path.dirname(_THIS_DIR), "configs", "output", "_batch_configs"),
+# )
+# CASE_CONFIGS = expanded.case_paths
+
 N_WORKERS = 4
 
 

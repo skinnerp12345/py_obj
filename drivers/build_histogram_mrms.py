@@ -95,7 +95,7 @@ def run_one_case(config_path: str) -> list[str]:
 
         out_path = os.path.join(hist_cfg.output_dir, f"hist_mrms_{day}.nc")
         write_histogram_file(
-            out_path, bins, slices, hist_cfg.var_name, hist_cfg.edge_trim, hist_cfg.clip_negative_to_zero, files,
+            out_path, bins, slices, hist_cfg.var_name, hist_cfg.edge_trim, hist_cfg.clip_negative_to_zero, len(files),
         )
         out_paths.append(out_path)
         print(f"  wrote {out_path} ({len(slices)} slices, {sum(s.hist.sum() for s in slices)} total counts)")

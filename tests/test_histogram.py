@@ -136,7 +136,7 @@ def test_histogram_file_roundtrip_obs_and_model_slices(tmp_path):
         HistogramSlice(valid_time=datetime(2023, 5, 1, 0, 0, 0), hist=h1),
         HistogramSlice(valid_time=datetime(2023, 5, 1, 1, 0, 0), hist=h2),
     ]
-    write_histogram_file(p_obs, bins, obs_slices, "refl_consv", 7, False, ["a.nc", "b.nc"])
+    write_histogram_file(p_obs, bins, obs_slices, "refl_consv", 7, False, 2)
     c_obs = read_histogram_file(p_obs)
     assert np.array_equal(c_obs.bins, bins)
     assert len(c_obs.slices) == 2
@@ -144,7 +144,8 @@ def test_histogram_file_roundtrip_obs_and_model_slices(tmp_path):
     np.testing.assert_array_equal(c_obs.slices[0].hist, h1)
     np.testing.assert_array_equal(c_obs.slices[1].hist, h2)
     assert c_obs.varname == "refl_consv" and c_obs.edge_trim == 7 and c_obs.clip_negative_to_zero is False
-    print(f"\n[hist-check3] obs round-trip OK: {len(c_obs.slices)} slices, source_files={c_obs.source_files}")
+    assert c_obs.n_source_files == 2
+    print(f"\n[hist-check3] obs round-trip OK: {len(c_obs.slices)} slices, n_source_files={c_obs.n_source_files}")
 
     # model-style: every slice has lead_hours + member_id
     p_model = str(tmp_path / "model.nc")
@@ -152,7 +153,7 @@ def test_histogram_file_roundtrip_obs_and_model_slices(tmp_path):
         HistogramSlice(valid_time=datetime(2023, 5, 1, 1, 0, 0), hist=h1, lead_hours=1.0, member_id="mem00"),
         HistogramSlice(valid_time=datetime(2023, 5, 1, 1, 0, 0), hist=h2, lead_hours=1.0, member_id="mem01"),
     ]
-    write_histogram_file(p_model, bins, model_slices, "comp_dz", 0, True, ["c.nc"])
+    write_histogram_file(p_model, bins, model_slices, "comp_dz", 0, True, 1)
     c_model = read_histogram_file(p_model)
     assert c_model.slices[0].lead_hours == 1.0 and c_model.slices[0].member_id == "mem00"
     assert c_model.slices[1].member_id == "mem01"
@@ -164,11 +165,11 @@ def test_histogram_file_roundtrip_obs_and_model_slices(tmp_path):
 def test_write_histogram_file_rejects_empty_or_mismatched_shape(tmp_path):
     bins = default_bin_edges(bin_min=0.0, bin_max=10.0, bin_width=1.0)
     with pytest.raises(ValueError, match="non-empty"):
-        write_histogram_file(str(tmp_path / "x.nc"), bins, [], "v", 0, False, [])
+        write_histogram_file(str(tmp_path / "x.nc"), bins, [], "v", 0, False, 0)
 
     bad_slice = HistogramSlice(valid_time=datetime(2023, 5, 1), hist=np.zeros(3))
     with pytest.raises(ValueError, match="does not match bins"):
-        write_histogram_file(str(tmp_path / "y.nc"), bins, [bad_slice], "v", 0, False, [])
+        write_histogram_file(str(tmp_path / "y.nc"), bins, [bad_slice], "v", 0, False, 1)
 
 
 # --- Check 4: aggregate.sum_histograms subsetting (synthetic, known truth) -
@@ -182,7 +183,7 @@ def test_sum_histograms_hour_of_day_subset_recovers_expected_counts(tmp_path):
         HistogramSlice(valid_time=datetime(2023, 5, 1, 12, 0, 0), hist=_hist_with(bins, {1: 999})),  # different hour
     ]
     p = str(tmp_path / "day.nc")
-    write_histogram_file(p, bins, slices, "refl_consv", 7, False, ["x.nc"])
+    write_histogram_file(p, bins, slices, "refl_consv", 7, False, 1)
 
     _, hour0_total = sum_histograms([p], predicate=by_hour_of_day(0))
     print(f"\n[hist-check4] hour=0 subset total at bin 1: {hour0_total[1]} (expect 30, excluding the 999 at hour 12)")
@@ -200,7 +201,7 @@ def test_sum_histograms_lead_hours_bucket_recovers_expected_counts(tmp_path):
         HistogramSlice(valid_time=datetime(2023, 5, 2, 1, 0, 0), hist=_hist_with(bins, {2: 500}), lead_hours=25.0),  # day 2
     ]
     p = str(tmp_path / "forecast.nc")
-    write_histogram_file(p, bins, slices, "refl10cm_max", 7, False, ["y.nc"])
+    write_histogram_file(p, bins, slices, "refl10cm_max", 7, False, 1)
 
     _, day1_total = sum_histograms([p], predicate=by_lead_hours_range(0.0, 24.0))
     print(f"\n[hist-check4b] day-1 (lead 0-24h) subset total at bin 2: {day1_total[2]} (expect 12, excluding the 500 at lead 25h)")
@@ -215,8 +216,8 @@ def test_sum_histograms_rejects_mismatched_bins(tmp_path):
     bins_b = default_bin_edges(bin_min=0.0, bin_max=20.0, bin_width=1.0)
     p_a = str(tmp_path / "a.nc")
     p_b = str(tmp_path / "b.nc")
-    write_histogram_file(p_a, bins_a, [HistogramSlice(valid_time=datetime(2023, 5, 1), hist=_hist_with(bins_a, {1: 1}))], "v", 0, False, [])
-    write_histogram_file(p_b, bins_b, [HistogramSlice(valid_time=datetime(2023, 5, 1), hist=_hist_with(bins_b, {1: 1}))], "v", 0, False, [])
+    write_histogram_file(p_a, bins_a, [HistogramSlice(valid_time=datetime(2023, 5, 1), hist=_hist_with(bins_a, {1: 1}))], "v", 0, False, 0)
+    write_histogram_file(p_b, bins_b, [HistogramSlice(valid_time=datetime(2023, 5, 1), hist=_hist_with(bins_b, {1: 1}))], "v", 0, False, 0)
 
     with pytest.raises(ValueError, match="different bin edges"):
         sum_histograms([p_a, p_b])
