@@ -67,6 +67,10 @@ class InterpolationConfig:
     weight_cache_dir: str = "output/weight_cache"
     date_range: tuple[str, str] | None = None
     max_files: int | None = None
+    file_pattern: str = "**/*.grib2*"  # restricts discovery to one MRMS product when
+                                        # a date directory holds more than one (e.g.
+                                        # "**/*MergedReflectivityQCComposite*" to skip
+                                        # MESH/RotationTrack files sitting alongside it
 
 
 @dataclass
@@ -356,6 +360,7 @@ def load_config(path: str) -> Config:
             weight_cache_dir=interp_section.get("weight_cache_dir", "output/weight_cache"),
             date_range=tuple(date_range) if date_range is not None else None,
             max_files=interp_section.get("max_files"),
+            file_pattern=interp_section.get("file_pattern", "**/*.grib2*"),
         )
         _resolve_paths(interpolation, _INTERPOLATION_PATH_FIELDS, base_dir)
 

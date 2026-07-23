@@ -29,6 +29,7 @@ def run_one_case(config_path: str) -> BatchSummary:
 
     print(f"Interpolating MRMS files from '{interp.raw_mrms_dir}' -> '{interp.interp_mrms_dir}'")
     print(f"Target grid: '{interp.target_grid_file}' (lat='{interp.target_lat_name}', lon='{interp.target_lon_name}')")
+    print(f"File pattern: '{interp.file_pattern}'")
     if interp.date_range:
         print(f"Date range: {interp.date_range[0]} - {interp.date_range[1]}")
     if interp.max_files:
@@ -44,6 +45,7 @@ def run_one_case(config_path: str) -> BatchSummary:
         n_workers=interp.n_workers,
         date_range=interp.date_range,
         max_files=interp.max_files,
+        file_pattern=interp.file_pattern,
     )
 
 

@@ -11,6 +11,7 @@ for a routine pytest run).
 
 import glob
 import os
+import shutil
 
 import netCDF4
 import numpy as np
@@ -33,6 +34,61 @@ def test_discover_mrms_files_finds_nested_and_filters_by_date():
     assert len(files) == 3, "expected the bundled 3-file sample_data/mpas_case/mrms/20230501 set to be discovered"
     assert all(f.endswith(".grib2.gz") for f in files)
     print(f"\n[batch-check1] discovered {len(files)} files")
+
+
+# --- file_pattern: restricting discovery to one MRMS product ---------------
+#
+# Real risk this guards against: load_mrms_grib2() has no product-type
+# awareness of its own (it just reads whichever GRIB2 message is first in the
+# file) -- an unfiltered glob sweeping up MESH/RotationTrack files sitting
+# alongside MergedReflectivityQCComposite in the same date directory would
+# silently interpolate and write out non-reflectivity values as if they were
+# dBZ. Uses empty placeholder files for the other-product decoys -- this test
+# only needs to prove filename-based discovery excludes them, never reads
+# their content.
+
+def _mixed_product_dir(tmp_path) -> str:
+    mixed_dir = tmp_path / "mixed_products" / "20230501"
+    mixed_dir.mkdir(parents=True)
+    for real_file in discover_mrms_files(INPUT_DIR):
+        shutil.copy(real_file, mixed_dir / os.path.basename(real_file))
+    (mixed_dir / "MRMS_MESH_00.50_20230501-000000.grib2.gz").touch()
+    (mixed_dir / "MRMS_RotationTrack60min_00.50_20230501-000000.grib2.gz").touch()
+    return str(tmp_path / "mixed_products")
+
+
+def test_discover_mrms_files_default_pattern_sweeps_up_other_products(tmp_path):
+    mixed_dir = _mixed_product_dir(tmp_path)
+    files = discover_mrms_files(mixed_dir)  # default pattern: "**/*.grib2*"
+    print(f"\n[batch-check-pattern1] default pattern discovered {len(files)} files (expect 5: 3 real + 2 decoys)")
+    assert len(files) == 5, "default pattern should match every grib2 file regardless of product -- demonstrates the risk"
+
+
+def test_discover_mrms_files_product_pattern_excludes_other_products(tmp_path):
+    mixed_dir = _mixed_product_dir(tmp_path)
+    files = discover_mrms_files(mixed_dir, pattern="**/*MergedReflectivityQCComposite*")
+    print(f"\n[batch-check-pattern2] product-specific pattern discovered {len(files)} files (expect 3, decoys excluded)")
+    assert len(files) == 3
+    assert all("MergedReflectivityQCComposite" in f for f in files)
+
+
+def test_run_batch_interpolation_file_pattern_excludes_other_products(tmp_path):
+    mixed_dir = _mixed_product_dir(tmp_path)
+    out_dir = str(tmp_path / "interp_mixed_test")
+
+    summary = run_batch_interpolation(
+        input_dir=mixed_dir,
+        output_dir=out_dir,
+        target_grid_file=MPAS_FILE,
+        target_lat_name="latitude",
+        target_lon_name="longitude",
+        weight_cache_dir=WEIGHT_CACHE_DIR,
+        n_workers=2,
+        file_pattern="**/*MergedReflectivityQCComposite*",
+    )
+    print(f"\n[batch-check-pattern3] {summary}")
+    assert summary.n_total == 3, "file_pattern should have excluded the 2 decoy other-product files before processing"
+    assert summary.n_failed == 0
 
 
 def test_make_output_path_naming_convention():

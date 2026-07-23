@@ -58,6 +58,17 @@ Warnings like "N of M target cells had no valid source coverage" are
 expected wherever your target grid extends beyond MRMS's observed radar
 coverage — those cells are padded with the fill value, not an error.
 
+`interpolation.file_pattern` (default `"**/*.grib2*"`, i.e. every grib2 file)
+restricts discovery to one MRMS product when a date directory holds more
+than one — e.g. MESH or RotationTrack sitting alongside
+MergedReflectivityQCComposite. This matters because `load_mrms_grib2()` has
+no product-type awareness of its own (it just reads whichever GRIB2 message
+is first in the file) — an unfiltered glob sweeping up the wrong product
+would silently interpolate and write out non-reflectivity values as if they
+were dBZ, not raise an error. Set e.g.
+`file_pattern: "**/*MergedReflectivityQCComposite*"` to select only that
+product.
+
 ## `identify_track_mrms.py`
 
 Identifies (and optionally tracks) storm objects in already-interpolated

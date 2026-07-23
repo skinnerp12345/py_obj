@@ -196,6 +196,7 @@ def run_batch_interpolation(
     fill_value: float = MRMS_MISSING_VALUE,
     date_range: tuple[str, str] | None = None,
     max_files: int | None = None,
+    file_pattern: str = "**/*.grib2*",
 ) -> BatchSummary:
     """Interpolate every MRMS file under input_dir onto the grid defined by
     target_grid_file, writing one NetCDF file per input under output_dir.
@@ -206,11 +207,20 @@ def run_batch_interpolation(
     max_files, if given, caps the number of files processed after discovery/date
     filtering -- a quick dry-run/smoke-test knob, not something a production run
     would normally set.
+
+    file_pattern (default "**/*.grib2*", i.e. every grib2 file, preserving prior
+    behavior exactly) restricts discovery to one MRMS product when a date
+    directory holds more than one (e.g. MergedReflectivityQCComposite alongside
+    MESH or RotationTrack) -- load_mrms_grib2() has no product-type awareness of
+    its own (it just reads whichever GRIB2 message is first in the file), so an
+    unfiltered glob sweeping up the wrong product would silently interpolate and
+    write out non-reflectivity values as if they were dBZ. e.g.
+    "**/*MergedReflectivityQCComposite*" selects only that product.
     """
-    files = discover_mrms_files(input_dir)
+    files = discover_mrms_files(input_dir, pattern=file_pattern)
     files = _filter_by_date_range(files, date_range)
     if not files:
-        raise ValueError(f"No MRMS files found under '{input_dir}' (date_range={date_range})")
+        raise ValueError(f"No MRMS files found under '{input_dir}' (pattern='{file_pattern}', date_range={date_range})")
     if max_files is not None:
         files = files[:max_files]
 

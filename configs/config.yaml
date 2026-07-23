@@ -30,6 +30,10 @@ interpolation:
   weight_cache_dir: output/weight_cache
   date_range: ["20230401", "20230402"]        # inclusive YYYYMMDD range; set to null for everything found
   max_files: null                             # cap file count after discovery/date filtering; null = no cap
+  file_pattern: "**/*.grib2*"                 # restricts to one MRMS product when a date directory
+                                               # holds more than one (e.g. MESH/RotationTrack alongside
+                                               # MergedReflectivityQCComposite) -- e.g.
+                                               # "**/*MergedReflectivityQCComposite*" to select only that product
 
 observations:
   file_format: netcdf          # netcdf | grib2 -- selects the loader
