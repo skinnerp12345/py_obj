@@ -7,6 +7,7 @@ import glob
 import os
 from datetime import datetime, timedelta
 
+import netCDF4
 import numpy as np
 import pytest
 
@@ -249,6 +250,61 @@ def test_object_file_roundtrip_all_shapes(tmp_path):
     ]
     assert len(filtered) >= 1
     print(f"[id-check5] full: labels.shape={c.labels.shape}, filtered subset size={len(filtered)}")
+
+
+# --- Check 5b: legacy files (written before n_source_files existed) --------
+#
+# Real, not hypothetical: a real downloaded MRMS object archive (produced
+# before this schema field existed) has no n_source_files attribute at all
+# -- read_object_file() used to raise AttributeError on every one of them.
+# A "single" grouping file is, by construction, always derived from exactly
+# one input file, so n_source_files=1 can be safely inferred for that shape
+# specifically -- without touching the old source_files string attribute at
+# all. Any other shape genuinely could have >1 source file, so inference
+# must NOT be attempted there -- confirmed via a deliberate failure case.
+
+def _write_legacy_file_without_n_source_files(path: str, results, lat2d, lon2d, t0) -> None:
+    """Writes via the real writer, then strips n_source_files to simulate a
+    file written before that attribute existed -- avoids hand-rolling a
+    second, parallel netCDF-writing implementation just for this test."""
+    write_object_file(path, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
+    with netCDF4.Dataset(path, "a") as ds:
+        del ds.n_source_files
+
+
+def test_legacy_single_file_infers_n_source_files_as_one(tmp_path):
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    d = np.zeros((60, 60)); d[10:15, 10:15] = 50.0
+    labels, objs = identify_objects(d, gg, 20.0, 30.0, 1.0)
+    result = IdentificationResult(labels=labels, objects=objs, valid_time=t0, member_id=None)
+
+    p = str(tmp_path / "legacy_single.nc")
+    _write_legacy_file_without_n_source_files(p, [result], lat2d, lon2d, t0)
+
+    c = read_object_file(p)
+    print(f"\n[id-check5b] legacy single-shape file (no n_source_files attr): inferred n_source_files={c.n_source_files}")
+    assert c.n_source_files == 1
+
+
+def test_legacy_multi_file_shape_without_n_source_files_raises(tmp_path):
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+
+    results = []
+    for i in range(3):
+        d = np.zeros((60, 60)); d[10:15, 10 + i:15 + i] = 50.0
+        labels, objs = identify_objects(d, gg, 20.0, 30.0, 1.0)
+        results.append(IdentificationResult(labels=labels, objects=objs, valid_time=t0, member_id=f"mem{i+1}"))
+
+    p = str(tmp_path / "legacy_ensemble_snapshot.nc")
+    _write_legacy_file_without_n_source_files(p, results, lat2d, lon2d, t0)
+
+    with pytest.raises(ValueError, match="n_source_files"):
+        read_object_file(p)
+    print("\n[id-check5b] legacy multi-file-shape file (no n_source_files attr) correctly raises, not silently guesses")
 
 
 # --- Check 6: real end-to-end series, "single" and "member_series" ---------
