@@ -19,8 +19,10 @@ _TIME_UNITS = "seconds since 1970-01-01 00:00:00"
 
 _MATCH_FLOAT_FIELDS = [
     "ti_score",
-    "truth_area_km2", "truth_max_intensity", "truth_centroid_lat", "truth_centroid_lon",
-    "forecast_area_km2", "forecast_max_intensity", "forecast_centroid_lat", "forecast_centroid_lon",
+    "truth_area_km2", "truth_max_intensity", "truth_mean_intensity", "truth_centroid_lat", "truth_centroid_lon",
+    "truth_solidity", "truth_major_axis_length", "truth_minor_axis_length", "truth_eccentricity",
+    "forecast_area_km2", "forecast_max_intensity", "forecast_mean_intensity", "forecast_centroid_lat", "forecast_centroid_lon",
+    "forecast_solidity", "forecast_major_axis_length", "forecast_minor_axis_length", "forecast_eccentricity",
 ]
 _MATCH_REQUIRED_INT_FIELDS = ["truth_id", "forecast_id"]  # always int, -1 = not applicable
 # truth_is_linear/forecast_is_linear: 0=cellular, 1=mixed, 2=linear -- -1
@@ -48,8 +50,10 @@ class MatchFileContents:
     max_centroid_disp_km: float
     ti_threshold: float
     max_time_offset_minutes: float | None
-    truth_source_files: list[str]
-    forecast_source_files: list[str]
+    n_truth_source_files: int  # count, not the file list -- a per-time file always used exactly
+                               # one truth file; a consolidated (file_grouping="init_snapshot")
+                               # file spanning many times can genuinely have used many
+    n_forecast_source_files: int  # same rationale, forecast side
 
 
 def _dt_to_seconds(dt: datetime) -> float:
@@ -65,8 +69,8 @@ def _seconds_to_dt(seconds: float) -> datetime:
 def write_match_file(
     path: str,
     results: list[MatchResult],
-    truth_source_files: list[str],
-    forecast_source_files: list[str],
+    n_truth_source_files: int,
+    n_forecast_source_files: int,
     max_boundary_disp_km: float,
     max_centroid_disp_km: float,
     ti_threshold: float,
@@ -145,8 +149,8 @@ def write_match_file(
             match_time_var = ds.createVariable("match_time_index", "i4", ("match",))
             match_time_var[:] = flat_time_idx
 
-        ds.truth_source_files = ";".join(truth_source_files)
-        ds.forecast_source_files = ";".join(forecast_source_files)
+        ds.n_truth_source_files = n_truth_source_files
+        ds.n_forecast_source_files = n_forecast_source_files
         ds.max_boundary_disp_km = max_boundary_disp_km
         ds.max_centroid_disp_km = max_centroid_disp_km
         ds.ti_threshold = ti_threshold
@@ -202,6 +206,6 @@ def read_match_file(path: str) -> MatchFileContents:
             max_centroid_disp_km=float(ds.max_centroid_disp_km),
             ti_threshold=float(ds.ti_threshold),
             max_time_offset_minutes=float(ds.max_time_offset_minutes) if hasattr(ds, "max_time_offset_minutes") else None,
-            truth_source_files=ds.truth_source_files.split(";"),
-            forecast_source_files=ds.forecast_source_files.split(";"),
+            n_truth_source_files=int(ds.n_truth_source_files),
+            n_forecast_source_files=int(ds.n_forecast_source_files),
         )

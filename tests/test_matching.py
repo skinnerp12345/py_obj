@@ -228,7 +228,7 @@ def test_match_file_roundtrip(tmp_path):
     result = MatchResult(records=records, valid_time=t0, member_id=None)
 
     p = str(tmp_path / "match.nc")
-    write_match_file(p, [result], ["truth.nc"], ["forecast.nc"], 40.0, 40.0, 0.2, max_time_offset_minutes=5.0)
+    write_match_file(p, [result], 1, 1, 40.0, 40.0, 0.2, max_time_offset_minutes=5.0)
     contents = read_match_file(p)
 
     print(f"\n[match-check5] n records original={len(records)} roundtrip={len(contents.records)}")
@@ -238,7 +238,14 @@ def test_match_file_roundtrip(tmp_path):
         assert orig.truth_id == rt.truth_id
         assert orig.forecast_id == rt.forecast_id
         assert abs(orig.ti_score - rt.ti_score) < 1e-9
+        assert orig.truth_mean_intensity == rt.truth_mean_intensity
+        assert orig.truth_solidity == rt.truth_solidity
+        assert orig.truth_major_axis_length == rt.truth_major_axis_length
+        assert orig.truth_minor_axis_length == rt.truth_minor_axis_length
+        assert orig.truth_eccentricity == rt.truth_eccentricity
     assert contents.max_time_offset_minutes == 5.0
+    assert contents.n_truth_source_files == 1
+    assert contents.n_forecast_source_files == 1
 
 
 # --- Check 6: performance sanity check ---------------------------------------
@@ -432,3 +439,164 @@ def test_run_matching_series_with_init_snapshot_forecast_matches_per_member_corr
         print(f"[lazy-check3] {os.path.basename(path)}: {by_member}")
         assert "hit" in by_member["mem_1"] and "false_alarm" not in by_member["mem_1"]
         assert "false_alarm" in by_member["mem_2"] and "hit" not in by_member["mem_2"]
+
+
+# --- Check 8: file_grouping="init_snapshot" consolidated match output -------
+
+def test_run_matching_series_init_snapshot_consolidates_one_file_per_case(tmp_path):
+    """file_grouping="init_snapshot" must produce exactly ONE match file per
+    call (mirroring object files' own init_snapshot shape: both member and
+    time dimensions in one file), named after the forecast case's own
+    init_time -- and its n_truth_source_files/n_forecast_source_files counts
+    must reflect the actual number of distinct files used, not the length of
+    whatever list was passed in (the bug this replaces: a real match file
+    from the per-time driver was found listing all 133 input truth files for
+    a single-hour output)."""
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    init_time = datetime(2023, 5, 1, 0, 0, 0)
+    t0, t1 = init_time, init_time + timedelta(hours=1)
+
+    truth_labels_0, truth_objects_0 = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    truth_labels_1, truth_objects_1 = identify_objects(_blob(60, 60), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    truth_path_0 = str(tmp_path / "truth_t0.nc")
+    write_object_file(truth_path_0, t0, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels_0, objects=truth_objects_0, valid_time=t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+    truth_path_1 = str(tmp_path / "truth_t1.nc")
+    write_object_file(truth_path_1, t1, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels_1, objects=truth_objects_1, valid_time=t1, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    close_labels_0, close_objects_0 = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    close_labels_1, close_objects_1 = identify_objects(_blob(60, 60), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    forecast_path = str(tmp_path / "forecast_init_snapshot.nc")
+    write_object_file(forecast_path, init_time, lat2d, lon2d, [
+        IdentificationResult(labels=close_labels_0, objects=close_objects_0, valid_time=t0, member_id="mem_1"),
+        IdentificationResult(labels=close_labels_1, objects=close_objects_1, valid_time=t1, member_id="mem_1"),
+        IdentificationResult(labels=close_labels_0, objects=close_objects_0, valid_time=t0, member_id="mem_2"),
+        IdentificationResult(labels=close_labels_1, objects=close_objects_1, valid_time=t1, member_id="mem_2"),
+    ], 1, 20.0, 30.0, 1.0)
+
+    summary = run_matching_series(
+        [truth_path_0, truth_path_1], [forecast_path],
+        max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+        output_dir=str(tmp_path / "matches"), max_time_offset_minutes=5.0,
+        file_grouping="init_snapshot",
+    )
+    print(f"\n[lazy-check4] {summary.output_paths}")
+    assert len(summary.output_paths) == 1
+    assert os.path.basename(summary.output_paths[0]) == f"match_init_{init_time:%Y%m%d_%H%M%S}.nc"
+
+    contents = read_match_file(summary.output_paths[0])
+    assert contents.member_ids == ["mem_1", "mem_2"]
+    assert len(contents.valid_times) == 2
+    # every (member, time) combination's records must be present -- confirms
+    # nothing was dropped when consolidating from 4 separate per-(member,time)
+    # match computations into one file
+    assert len(contents.records) == 4  # 2 members x 2 times, 1 hit record each (1 truth obj, 1 forecast obj)
+    print(f"[lazy-check4] n_truth_source_files={contents.n_truth_source_files}, "
+          f"n_forecast_source_files={contents.n_forecast_source_files}")
+    assert contents.n_truth_source_files == 2  # both truth_path_0 and truth_path_1 were actually used
+    assert contents.n_forecast_source_files == 1  # only the one forecast file
+
+
+def test_run_matching_series_init_snapshot_with_jittered_truth_times(tmp_path):
+    """Regression test for a real bug caught running this against actual
+    MRMS data: truth files' own real valid_time is jittered (e.g. 00:00:41,
+    not exactly 00:00:00) relative to the forecast's clean on-the-hour
+    valid_time, matched via max_time_offset_minutes tolerance -- not exact
+    equality. n_truth_source_files must still resolve correctly (previously
+    raised KeyError because the fix looked up the truth file by the
+    FORECAST's valid_time instead of the actual matched truth valid_time)."""
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    init_time = datetime(2023, 5, 1, 0, 0, 0)
+    forecast_t0 = init_time  # exactly on the hour
+    truth_t0 = init_time + timedelta(seconds=41)  # jittered, within the 5-min tolerance
+
+    truth_labels, truth_objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    truth_path = str(tmp_path / "truth.nc")
+    write_object_file(truth_path, truth_t0, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels, objects=truth_objects, valid_time=truth_t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    forecast_labels, forecast_objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    forecast_path = str(tmp_path / "forecast.nc")
+    write_object_file(forecast_path, init_time, lat2d, lon2d,
+        [IdentificationResult(labels=forecast_labels, objects=forecast_objects, valid_time=forecast_t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    summary = run_matching_series(
+        [truth_path], [forecast_path],
+        max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+        output_dir=str(tmp_path / "matches"), max_time_offset_minutes=5.0,
+        file_grouping="init_snapshot",
+    )
+    assert len(summary.output_paths) == 1
+    contents = read_match_file(summary.output_paths[0])
+    print(f"\n[lazy-check5] n_truth_source_files={contents.n_truth_source_files}")
+    assert contents.n_truth_source_files == 1
+    assert len(contents.records) == 1
+    assert contents.records[0].category == "hit"
+
+
+def test_run_matching_series_init_snapshot_requires_shared_init_time(tmp_path):
+    """A clear, named error rather than an ambiguous/wrong output filename if
+    forecast_files don't share one common init_time -- real synthetic files
+    with genuinely different init_times, not a fake-path shortcut."""
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+
+    truth_labels, truth_objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    truth_path = str(tmp_path / "truth.nc")
+    write_object_file(truth_path, t0, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels, objects=truth_objects, valid_time=t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    forecast_labels, forecast_objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    forecast_path_a = str(tmp_path / "forecast_a.nc")
+    write_object_file(forecast_path_a, datetime(2023, 5, 1, 0, 0, 0), lat2d, lon2d,
+        [IdentificationResult(labels=forecast_labels, objects=forecast_objects, valid_time=t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+    forecast_path_b = str(tmp_path / "forecast_b.nc")
+    write_object_file(forecast_path_b, datetime(2023, 5, 2, 0, 0, 0), lat2d, lon2d,
+        [IdentificationResult(labels=forecast_labels, objects=forecast_objects, valid_time=t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    with pytest.raises(ValueError, match="init_snapshot"):
+        run_matching_series(
+            [truth_path], [forecast_path_a, forecast_path_b],
+            max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+            output_dir=str(tmp_path / "matches"), file_grouping="init_snapshot",
+        )
+
+
+def test_run_matching_series_unknown_file_grouping_raises(tmp_path):
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    labels, objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+
+    truth_path = str(tmp_path / "truth.nc")
+    write_object_file(truth_path, t0, lat2d, lon2d,
+        [IdentificationResult(labels=labels, objects=objects, valid_time=t0, member_id=None)], 1, 20.0, 30.0, 1.0)
+    forecast_path = str(tmp_path / "forecast.nc")
+    write_object_file(forecast_path, t0, lat2d, lon2d,
+        [IdentificationResult(labels=labels, objects=objects, valid_time=t0, member_id=None)], 1, 20.0, 30.0, 1.0)
+
+    with pytest.raises(ValueError, match="file_grouping"):
+        run_matching_series(
+            [truth_path], [forecast_path],
+            max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+            output_dir=str(tmp_path / "matches"), file_grouping="not_a_real_mode",
+        )

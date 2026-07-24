@@ -29,15 +29,21 @@ adds the two remaining pieces needed to run that safely at real scale:
    only ever be too generous, never too strict), not a second, independent
    notion of "close enough".
 
-2. Per-case output subdirectories. write_match_file() names its output
-   purely by forecast valid_time (match_<valid_time>.nc), with no case/
-   init-time key. Daily-issued, multi-day-long forecast cases have real,
-   overlapping valid-time ranges (confirmed real example: consecutive daily
-   133-lead-hour MPAS cases overlap by ~4.5 of their 5.5-day span) -- running
-   every case's output into one shared directory would silently overwrite
-   most of it, the same collision class file_grouping="init_snapshot" was
-   built to fix for object files. Each case's matches go to their own
-   output_dir/<case file's own basename>/ subdirectory instead.
+2. One consolidated match file per case, not one per (case, valid_time) pair.
+   run_matching_series's default file_grouping="per_time" names output purely
+   by forecast valid_time (match_<valid_time>.nc), with no case/init-time key
+   -- daily-issued, multi-day-long forecast cases have real, overlapping
+   valid-time ranges (confirmed real example: consecutive daily 133-lead-hour
+   MPAS cases overlap by ~4.5 of their 5.5-day span), so running every case's
+   per-time output into one shared directory would silently overwrite most of
+   it -- the same collision class file_grouping="init_snapshot" was built to
+   fix for object files. This driver instead calls run_matching_series with
+   file_grouping="init_snapshot": one match_init_<init_time>.nc file per case
+   (every member x every lead time, mirroring the forecast object file's own
+   init_snapshot shape exactly), named after the case's own unique init_time
+   -- inherently collision-free across cases even in one shared flat
+   output_dir, and subsettable back into individual (member, valid_time)
+   slices the same way object files already are.
 
 Configured via the shared MatchingConfig schema (max_boundary_disp_km,
 max_centroid_disp_km, ti_threshold, max_time_offset_minutes,
@@ -127,11 +133,10 @@ def run_one_case(config_path: str, case_file: str) -> MatchingSummary:
     )
 
     case_key = os.path.splitext(os.path.basename(case_file))[0]
-    case_output_dir = os.path.join(match.output_dir, case_key)
 
     print(
         f"[{case_key}] forecast valid-time span: {window_start} to {window_end}; "
-        f"{len(truth_files)} truth files selected (of the full archive) -> {case_output_dir}"
+        f"{len(truth_files)} truth files selected (of the full archive) -> {match.output_dir}"
     )
 
     return run_matching_series(
@@ -139,8 +144,9 @@ def run_one_case(config_path: str, case_file: str) -> MatchingSummary:
         max_boundary_disp_km=match.max_boundary_disp_km,
         max_centroid_disp_km=match.max_centroid_disp_km,
         ti_threshold=match.ti_threshold,
-        output_dir=case_output_dir,
+        output_dir=match.output_dir,
         max_time_offset_minutes=match.max_time_offset_minutes,
+        file_grouping="init_snapshot",
     )
 
 

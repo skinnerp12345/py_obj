@@ -89,6 +89,15 @@ def read_grid_shape(path: str) -> tuple[int, int]:
         return tuple(ds.variables["lat"].shape)
 
 
+def read_init_time_only(path: str) -> datetime | None:
+    """Just the file's own init_time global attribute (None if absent, e.g. a
+    truth/obs file that never has one) -- reads no variables at all, so this
+    is essentially free. Used to name a consolidated (file_grouping=
+    "init_snapshot") match file after its forecast case, without a full read."""
+    with netCDF4.Dataset(path, "r") as ds:
+        return datetime.fromisoformat(ds.init_time) if hasattr(ds, "init_time") else None
+
+
 def _dt_to_seconds(dt: datetime) -> float:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

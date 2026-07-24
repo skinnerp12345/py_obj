@@ -56,7 +56,10 @@ def total_interest_area_ratio(ti: float, area1_km2: float, area2_km2: float) -> 
     return ti * area_ratio
 
 
-_MATCH_RECORD_SIDE_FIELDS = ["area_km2", "max_intensity", "is_linear", "centroid_lat", "centroid_lon"]
+_MATCH_RECORD_SIDE_FIELDS = [
+    "area_km2", "max_intensity", "mean_intensity", "is_linear", "centroid_lat", "centroid_lon",
+    "solidity", "major_axis_length", "minor_axis_length", "eccentricity",
+]
 
 
 @dataclass
@@ -68,15 +71,25 @@ class MatchRecord:
 
     truth_area_km2: float | None = None
     truth_max_intensity: float | None = None
+    truth_mean_intensity: float | None = None
     truth_is_linear: int | None = None  # 0=cellular, 1=mixed, 2=linear; None if no truth object
     truth_centroid_lat: float | None = None
     truth_centroid_lon: float | None = None
+    truth_solidity: float | None = None
+    truth_major_axis_length: float | None = None
+    truth_minor_axis_length: float | None = None
+    truth_eccentricity: float | None = None
 
     forecast_area_km2: float | None = None
     forecast_max_intensity: float | None = None
+    forecast_mean_intensity: float | None = None
     forecast_is_linear: int | None = None  # 0=cellular, 1=mixed, 2=linear; None if no forecast object
     forecast_centroid_lat: float | None = None
     forecast_centroid_lon: float | None = None
+    forecast_solidity: float | None = None
+    forecast_major_axis_length: float | None = None
+    forecast_minor_axis_length: float | None = None
+    forecast_eccentricity: float | None = None
 
 
 def _record_from_objects(
