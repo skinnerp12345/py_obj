@@ -289,3 +289,41 @@ def read_valid_time_only(
             ds, filepath, None, init_attr, lead_attr, lead_units, init_format,
             valid_time_attr, valid_time_format, valid_time_fn,
         )
+
+
+def read_init_time_only(
+    filepath: str,
+    init_attr: str = "initializationTime",
+    init_format: str = "%Y%m%d%H",
+    valid_time_attr: str | None = None,
+    valid_time_format: str | None = None,
+    init_time_attr: str = "init_time",
+) -> datetime:
+    """Read just a model file's forecast INIT time (not valid_time) -- needed
+    to group/name output by forecast case (see obj_core's
+    file_grouping='init_snapshot'). Cheap, attribute-only read, mirroring
+    read_valid_time_only()'s own convention.
+
+    Two modes, matching _resolve_valid_time()'s two attribute-based
+    conventions (the escape-hatch valid_time/valid_time_fn modes have no
+    init_time equivalent -- a caller using those must derive init_time some
+    other way):
+      - init_attr+init_format (MPAS-style arithmetic mode): init_time is
+        read directly from init_attr -- no lead-time arithmetic needed for
+        this value specifically.
+      - valid_time_attr given (WoFS-style string mode): init_time is read
+        from init_time_attr, parsed with the SAME format as valid_time_attr's
+        own string (matching this convention's established "a same-format
+        init_time alongside valid_time" pattern -- see
+        HistogramModelConfig.init_time_attr / build_histogram_model.py's
+        _compute_lead_hours(), which already relies on this exact
+        assumption).
+    """
+    with netCDF4.Dataset(filepath, "r") as ds:
+        if valid_time_attr is not None:
+            if not hasattr(ds, init_time_attr):
+                raise ValueError(f"'{filepath}' is missing the '{init_time_attr}' global attribute.")
+            return datetime.strptime(getattr(ds, init_time_attr), valid_time_format)
+        if not hasattr(ds, init_attr):
+            raise ValueError(f"'{filepath}' is missing the '{init_attr}' global attribute.")
+        return datetime.strptime(getattr(ds, init_attr), init_format)

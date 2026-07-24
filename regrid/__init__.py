@@ -1,5 +1,5 @@
 from .grid_spec import CoverageReport, GridSpec, check_coverage, crop_to_bbox, estimate_cell_corners, grid_hash
-from .io_grid import infer_stacked_member_count, load_model_netcdf, load_target_grid, read_valid_time_only
+from .io_grid import infer_stacked_member_count, load_model_netcdf, load_target_grid, read_init_time_only, read_valid_time_only
 from .io_mrms import (
     MRMS_MISSING_VALUE,
     MRMS_NEAR_ZERO_FLOOR,
@@ -31,6 +31,7 @@ __all__ = [
     "load_target_grid",
     "load_model_netcdf",
     "read_valid_time_only",
+    "read_init_time_only",
     "infer_stacked_member_count",
     "MRMS_MISSING_VALUE",
     "MRMS_NEAR_ZERO_FLOOR",

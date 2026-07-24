@@ -10,9 +10,26 @@ import glob
 import os
 from typing import Callable
 
-from python_obj.regrid import infer_stacked_member_count, load_model_netcdf, read_valid_time_only
+from python_obj.regrid import infer_stacked_member_count, load_model_netcdf, read_init_time_only, read_valid_time_only
 
 from .object_io import SeriesEntry
+
+
+def _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr):
+    """init_time is a best-effort addition (file_grouping='init_snapshot' is
+    the only current consumer) -- a caller not using that grouping shouldn't
+    have their whole manifest build fail just because e.g. init_time_attr is
+    absent from this particular file. Returns None (not an error) on any
+    read failure; run_object_id_series's init_snapshot branch is what
+    actually enforces init_time being present, for whoever asks for it."""
+    try:
+        return read_init_time_only(
+            f, init_attr=init_attr or "initializationTime", init_format=init_format or "%Y%m%d%H",
+            valid_time_attr=valid_time_attr, valid_time_format=valid_time_format,
+            init_time_attr=init_time_attr,
+        )
+    except Exception:
+        return None
 
 
 def build_model_manifest(
@@ -30,6 +47,7 @@ def build_model_manifest(
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
     member_subdir_pattern: str = "*",
+    init_time_attr: str = "init_time",
 ) -> tuple[list[SeriesEntry], Callable[..., object]]:
     """Build the (member, time, filepath) manifest run_object_id_series (or
     the histogram driver) needs, plus a matching loader closure.
@@ -60,6 +78,14 @@ def build_model_manifest(
     valid_time comes from load_model_netcdf()'s (or, for stacked_members,
     read_valid_time_only()'s) own flexible derivation -- never parsed from
     the filename.
+
+    init_time (the forecast's own initialization time, distinct from
+    valid_time) is read once per file via read_init_time_only() and attached
+    to every SeriesEntry that file produces -- needed to group/name output by
+    forecast case (file_grouping="init_snapshot"). Best-effort: a file this
+    can't be derived for (e.g. init_time_attr absent) gets init_time=None
+    rather than failing the whole manifest build, since most callers
+    (anything not using init_snapshot) never look at it.
     """
     loader = lambda fp, extra_dim_index=None: load_model_netcdf(
         fp,
@@ -87,7 +113,10 @@ def build_model_manifest(
                     f"No files matching '{file_pattern}' found under member directory '{member_dir}'"
                 )
             for f in files:
-                manifest.append(SeriesEntry(valid_time=loader(f).valid_time, filepath=f, member_id=member_id))
+                init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
+                manifest.append(SeriesEntry(
+                    valid_time=loader(f).valid_time, filepath=f, member_id=member_id, init_time=init_time,
+                ))
     elif stacked_members:
         files = sorted(glob.glob(os.path.join(input_dir, file_pattern)))
         if not files:
@@ -98,17 +127,19 @@ def build_model_manifest(
                 init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
                 valid_time_attr=valid_time_attr, valid_time_format=valid_time_format,
             )
+            init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
             n_members = infer_stacked_member_count(f, var_name)
             for idx in range(n_members):
                 manifest.append(SeriesEntry(
                     valid_time=valid_time, filepath=f,
-                    member_id=f"mem{idx:02d}", extra_dim_index=idx,
+                    member_id=f"mem{idx:02d}", extra_dim_index=idx, init_time=init_time,
                 ))
     else:
         files = sorted(glob.glob(os.path.join(input_dir, file_pattern)))
         if not files:
             raise FileNotFoundError(f"No files matching '{file_pattern}' found under '{input_dir}'")
         for f in files:
-            manifest.append(SeriesEntry(valid_time=loader(f).valid_time, filepath=f, member_id=None))
+            init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
+            manifest.append(SeriesEntry(valid_time=loader(f).valid_time, filepath=f, member_id=None, init_time=init_time))
 
     return manifest, loader

@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import yaml
 
 _VALID_MASKS = ("none", "conus", "conus_east")
-_VALID_FILE_GROUPINGS = ("single", "member_series", "ensemble_snapshot", "full")
+_VALID_FILE_GROUPINGS = ("single", "member_series", "ensemble_snapshot", "full", "init_snapshot")
 _VALID_LEAD_UNITS = ("hours", "minutes", "seconds")
 
 _COMMON_REQUIRED = (
@@ -121,6 +121,14 @@ class ModelConfig:
     stacked_members: bool = False
     file_pattern: str = "*.nc"
     object_output_dir: str = "output/obj_model"
+    # Only used to derive each file's forecast init_time (distinct from
+    # valid_time) for file_grouping="init_snapshot" -- in the valid_time_attr
+    # string time-mode, the name of the file's own init-time string
+    # attribute, read with the same valid_time_format (see ModelConfig's
+    # HistogramModelConfig sibling field of the same name/purpose). In the
+    # init_attr/init_format arithmetic mode, init_time is read directly from
+    # init_attr, so this field is unused there.
+    init_time_attr: str = "init_time"
 
 
 @dataclass
@@ -392,6 +400,7 @@ def load_config(path: str) -> Config:
                 "init_format": None,
                 "valid_time_attr": None,
                 "valid_time_format": None,
+                "init_time_attr": "init_time",
             },
         )
         _resolve_paths(model, _MODEL_PATH_FIELDS, base_dir)

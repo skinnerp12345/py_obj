@@ -22,10 +22,13 @@ from .identify import GridGeometry, StormObject, identify_objects, precompute_gr
 from .object_io import IdentificationResult, SeriesEntry, write_object_file
 from .tracking import track_objects_incremental
 
-FileGrouping = Literal["single", "member_series", "ensemble_snapshot", "full"]
+FileGrouping = Literal["single", "member_series", "ensemble_snapshot", "full", "init_snapshot"]
 
 
-def _default_output_name(grouping: FileGrouping, member_id: str | None, valid_time: datetime | None) -> str:
+def _default_output_name(
+    grouping: FileGrouping, member_id: str | None, valid_time: datetime | None,
+    init_time: datetime | None = None,
+) -> str:
     if grouping == "single":
         member_part = member_id if member_id is not None else "obs"
         return f"obj_{member_part}_{valid_time:%Y%m%d_%H%M%S}.nc"
@@ -36,6 +39,8 @@ def _default_output_name(grouping: FileGrouping, member_id: str | None, valid_ti
         return f"obj_ensemble_{valid_time:%Y%m%d_%H%M%S}.nc"
     if grouping == "full":
         return "obj_full.nc"
+    if grouping == "init_snapshot":
+        return f"obj_init_{init_time:%Y%m%d_%H%M%S}.nc"
     raise ValueError(f"Unknown file_grouping '{grouping}'")
 
 
@@ -126,6 +131,7 @@ def run_object_id_series(
             all_results.append(
                 IdentificationResult(
                     labels=labels, objects=objects, valid_time=entry.valid_time, member_id=member_id,
+                    init_time=entry.init_time,
                 )
             )
 
@@ -179,6 +185,34 @@ def run_object_id_series(
             tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
         )
         output_paths.append(path)
+
+    elif file_grouping == "init_snapshot":
+        # One file per forecast CASE (every member x every lead time sharing
+        # one real init_time), named from that init_time -- unlike
+        # ensemble_snapshot (named from valid_time alone, which collides
+        # across different forecast cases whose lead times overlap in valid
+        # time) and full (a single hardcoded "obj_full.nc" name with no
+        # per-case distinction at all, which collides even more directly).
+        missing = [r for r in all_results if r.init_time is None]
+        if missing:
+            raise ValueError(
+                "file_grouping='init_snapshot' requires every manifest entry to carry init_time -- "
+                f"{len(missing)} result(s) have none. Check that the model config's time-derivation "
+                "fields (init_attr/init_format, or valid_time_attr+init_time_attr) are set correctly "
+                "for every input file."
+            )
+        by_init_results: dict[datetime, list[IdentificationResult]] = defaultdict(list)
+        for r in all_results:
+            by_init_results[r.init_time].append(r)
+        for this_init_time, results in by_init_results.items():
+            path = os.path.join(output_dir, _default_output_name("init_snapshot", None, None, init_time=this_init_time))
+            write_object_file(
+                path, this_init_time, grid_geometry.lat2d, grid_geometry.lon2d, results,
+                source_files=[e.filepath for e in manifest if e.init_time == this_init_time],
+                thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
+                tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+            )
+            output_paths.append(path)
 
     else:
         raise ValueError(f"Unknown file_grouping '{file_grouping}'")

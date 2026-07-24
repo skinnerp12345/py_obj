@@ -14,7 +14,9 @@ from python_obj.obj_core import (
     IdentificationResult,
     SeriesEntry,
     StormObject,
+    build_model_manifest,
     identify_objects,
+    iter_object_slices,
     precompute_grid_geometry,
     read_object_file,
     run_object_id_series,
@@ -305,3 +307,161 @@ def test_synthetic_multi_member_ensemble_groupings(tmp_path):
     print(f"[id-check7] full: labels.shape={c_full.labels.shape}, "
           f"cross-member track_ids (should be empty)={cross_member_tracks}")
     assert not cross_member_tracks, "tracking must only link objects within the same member's timeline"
+
+
+# --- Check 8: init_snapshot -- one file per forecast case, not per valid_time
+
+def _two_case_manifest(real):
+    """2 forecast cases (A init 2023-05-01 00Z, B init 2023-05-02 00Z), 2
+    members each, lead hours 0/24 -- deliberately overlapping in valid_time:
+    case A's lead=24 (2023-05-02 00Z) exactly equals case B's lead=0
+    (2023-05-02 00Z), the exact scenario that collides under
+    ensemble_snapshot's valid-time-only filename."""
+    class _Field:
+        def __init__(self, data, lat2d, lon2d, valid_time):
+            self.data, self.lat2d, self.lon2d, self.valid_time = data, lat2d, lon2d, valid_time
+
+    rng = np.random.default_rng(0)
+    member_fields = {f"mem{i+1}": np.roll(real.data, shift=i * 3, axis=1) for i in range(2)}
+
+    def loader(key: str):
+        member_id, iso_time = key.split("@")
+        return _Field(member_fields[member_id], real.lat2d, real.lon2d, datetime.fromisoformat(iso_time))
+
+    init_a = datetime(2023, 5, 1, 0, 0, 0)
+    init_b = datetime(2023, 5, 2, 0, 0, 0)
+    manifest = []
+    for init_time in (init_a, init_b):
+        for member_id in member_fields:
+            for lead_hours in (0, 24):
+                vt = init_time + timedelta(hours=lead_hours)
+                manifest.append(SeriesEntry(
+                    valid_time=vt, filepath=f"{member_id}@{vt.isoformat()}",
+                    member_id=member_id, init_time=init_time,
+                ))
+    return manifest, loader, init_a, init_b
+
+
+def test_init_snapshot_groups_by_forecast_case_not_valid_time(tmp_path):
+    mpas_file = os.path.join(MPAS_DIR, "interp_mpas_3km_2023050100_mem1_f001.nc")
+    real = load_model_netcdf(mpas_file, varname="refl10cm_max")
+    manifest, loader, init_a, init_b = _two_case_manifest(real)
+
+    out_paths = run_object_id_series(
+        manifest, lambda entry: loader(entry.filepath), thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=str(tmp_path / "init_snapshot"), file_grouping="init_snapshot",
+    )
+    print(f"\n[id-check8] init_snapshot: {len(out_paths)} files (expect 2, one per forecast case): {[os.path.basename(p) for p in out_paths]}")
+    assert len(out_paths) == 2
+    assert any(f"{init_a:%Y%m%d_%H%M%S}" in p for p in out_paths)
+    assert any(f"{init_b:%Y%m%d_%H%M%S}" in p for p in out_paths)
+
+    # each file must contain BOTH members x BOTH lead times for its own case
+    # (4 slices), and valid_time/member_id must be recoverable per-object --
+    # confirms the "objects from different lead times/members can be parsed
+    # out afterward" property, not just that the file writes without error.
+    for path in out_paths:
+        contents = read_object_file(path)
+        assert contents.labels.shape == (2, 2) + real.lat2d.shape  # (member, time, y, x)
+        assert sorted(contents.member_ids) == ["mem1", "mem2"]
+        assert len(contents.valid_times) == 2
+        slices = list(iter_object_slices(contents))
+        assert len(slices) == 4  # 2 members x 2 times
+        seen = {(member_id, vt) for member_id, vt, _, _ in slices}
+        assert len(seen) == 4, "every (member, valid_time) slice must be distinctly recoverable"
+    print("[id-check8] both files: 4 distinct (member, valid_time) slices recovered via iter_object_slices")
+
+
+def test_init_snapshot_avoids_ensemble_snapshot_collision(tmp_path):
+    """Real proof of the bug this feature fixes: two separate
+    run_object_id_series calls (mimicking one call per forecast case, exactly
+    how the batch workflow invokes this driver) writing to the SAME shared
+    output_dir. Under ensemble_snapshot, case B's lead=0 file overwrites case
+    A's lead=24 file (both valid at 2023-05-02 00Z) -- confirmed by a file
+    count deficit. Under init_snapshot, no collision occurs."""
+    mpas_file = os.path.join(MPAS_DIR, "interp_mpas_3km_2023050100_mem1_f001.nc")
+    real = load_model_netcdf(mpas_file, varname="refl10cm_max")
+    manifest, loader, init_a, init_b = _two_case_manifest(real)
+    manifest_a = [e for e in manifest if e.init_time == init_a]
+    manifest_b = [e for e in manifest if e.init_time == init_b]
+
+    shared_dir_bad = str(tmp_path / "shared_ensemble_snapshot")
+    out_a = run_object_id_series(
+        manifest_a, lambda entry: loader(entry.filepath), thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=shared_dir_bad, file_grouping="ensemble_snapshot",
+    )
+    out_b = run_object_id_series(
+        manifest_b, lambda entry: loader(entry.filepath), thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=shared_dir_bad, file_grouping="ensemble_snapshot",
+    )
+    distinct_files_on_disk = len(set(out_a) | set(out_b))
+    print(f"\n[id-check8b] ensemble_snapshot into a shared dir: case A wrote {len(out_a)}, case B wrote {len(out_b)}, "
+          f"distinct files on disk = {distinct_files_on_disk} (expect 3, NOT 4 -- one overwritten)")
+    assert distinct_files_on_disk == 3, "demonstrates the real collision: case B's lead=0 file overwrites case A's lead=24 file"
+
+    shared_dir_good = str(tmp_path / "shared_init_snapshot")
+    out_a2 = run_object_id_series(
+        manifest_a, lambda entry: loader(entry.filepath), thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=shared_dir_good, file_grouping="init_snapshot",
+    )
+    out_b2 = run_object_id_series(
+        manifest_b, lambda entry: loader(entry.filepath), thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=shared_dir_good, file_grouping="init_snapshot",
+    )
+    distinct_files_fixed = len(set(out_a2) | set(out_b2))
+    print(f"[id-check8b] init_snapshot into the same shared dir: distinct files on disk = {distinct_files_fixed} (expect 2, no collision)")
+    assert distinct_files_fixed == 2, "init_snapshot must not collide even when both cases share one output_dir"
+
+
+def test_init_snapshot_requires_init_time(tmp_path):
+    mpas_file = os.path.join(MPAS_DIR, "interp_mpas_3km_2023050100_mem1_f001.nc")
+    real = load_model_netcdf(mpas_file, varname="refl10cm_max")
+    manifest = [SeriesEntry(valid_time=real.valid_time, filepath="x", member_id="mem1", init_time=None)]
+
+    with pytest.raises(ValueError, match="init_snapshot.*init_time"):
+        run_object_id_series(
+            manifest, lambda entry: real, thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+            output_dir=str(tmp_path / "missing_init"), file_grouping="init_snapshot",
+        )
+    print("\n[id-check8c] init_snapshot without init_time raises a clear, named error")
+
+
+def test_init_snapshot_real_data_matches_full_mode(tmp_path):
+    """Real MPAS data via build_model_manifest() (not hand-built): confirms
+    init_time is actually derived correctly end to end (not just in the
+    synthetic tests above), and that init_snapshot on a manifest representing
+    exactly one real forecast case is numerically identical to "full" --
+    same underlying results, just grouped/named differently."""
+    manifest, loader = build_model_manifest(
+        input_dir=MPAS_DIR, file_pattern="*_f00[1-3].nc",  # excludes the f048 file (used only by linear-classification tests)
+        member_subdirs=False, stacked_members=False,
+        var_name="refl10cm_max", lat_name="latitude", lon_name="longitude",
+        init_attr="initializationTime", lead_attr="forecastHour", init_format="%Y%m%d%H",
+    )
+    assert len(manifest) == 3
+    init_times = {e.init_time for e in manifest}
+    print(f"\n[id-check8d] real manifest: {len(manifest)} entries, distinct init_times={init_times}")
+    assert len(init_times) == 1, "every file in this one real forecast case must share the same real init_time"
+    assert None not in init_times
+
+    # 39.8/45.6 (not 45.0/50.2) -- confirmed on this small bundled crop that
+    # f001/f003 each have exactly 1 real object at this threshold (max value
+    # only 43.6-46.5 dBZ, below 50.2's stricter bar), giving the full-vs-
+    # init_snapshot comparison below real, non-zero objects to compare.
+    loader_fn = lambda entry: loader(entry.filepath, extra_dim_index=entry.extra_dim_index)
+    out_full = run_object_id_series(
+        manifest, loader_fn, thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=str(tmp_path / "full"), file_grouping="full",
+    )
+    out_init = run_object_id_series(
+        manifest, loader_fn, thresh_1=39.8, thresh_2=45.6, area_thresh_km2=108.0,
+        output_dir=str(tmp_path / "init_snapshot"), file_grouping="init_snapshot",
+    )
+    assert len(out_init) == 1, "one real case -> exactly one init_snapshot file"
+
+    c_full = read_object_file(out_full[0])
+    c_init = read_object_file(out_init[0])
+    print(f"[id-check8d] full: {len(c_full.objects)} objects, init_snapshot: {len(c_init.objects)} objects")
+    assert len(c_full.objects) == len(c_init.objects)
+    assert sorted(o.id for o in c_full.objects) == sorted(o.id for o in c_init.objects)
+    assert c_init.init_time == next(iter(init_times))

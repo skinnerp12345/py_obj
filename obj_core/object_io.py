@@ -41,6 +41,9 @@ class SeriesEntry:
     filepath: str
     member_id: str | None = None
     extra_dim_index: int | None = None  # generic: which slice of a possibly-shared file to extract
+    init_time: datetime | None = None  # the forecast's own init time (not valid_time) -- only
+                                        # populated for model/forecast series; used to group
+                                        # output by forecast case (file_grouping="init_snapshot")
 
 
 @dataclass
@@ -53,6 +56,7 @@ class IdentificationResult:
     objects: list[StormObject]
     valid_time: datetime | None = None
     member_id: str | None = None
+    init_time: datetime | None = None
 
 
 @dataclass

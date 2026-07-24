@@ -115,7 +115,27 @@ in, NOT a description of your model's output cadence (MPAS's hourly output
 happens to store `forecastHour` in hours; a 5-minute-cadence model isn't
 required to use `minutes`). `model.file_grouping`: `single` (one file per
 time), `member_series` (one file per member), `ensemble_snapshot` (one file
-per time, all members), or `full` (one file, everything).
+per time, all members), `full` (one file, everything), or `init_snapshot`
+(one file per forecast INITIALIZATION, all members and all lead times for
+that one case together, named from its own init_time).
+
+**Use `init_snapshot`, not `ensemble_snapshot`, when batch-processing model
+output that spans more than one forecast case** (e.g. a multi-day archive of
+daily-initialized forecasts) into a *shared* output directory:
+`ensemble_snapshot` names files from `valid_time` alone, which collides and
+silently overwrites whenever two different forecast cases' lead times share
+a valid time (a real, confirmed issue for any forecast issued more
+frequently than its own length, e.g. a 5-day forecast issued daily). `full`
+is worse for this — its filename has no distinguishing key at all, so every
+case would collide on the same literal name. `init_snapshot` names files
+from each case's own real init_time instead, so it never collides even when
+every date's batch job writes to the same shared directory (not just when
+using a per-date `{date}`-templated one). Requires the model's time-mode to
+supply a real init_time per file (either `init_attr`+`init_format`, or
+`valid_time_attr`+`model.init_time_attr` — the latter defaults to
+`"init_time"`, matching `histogram_model`'s field of the same name) —
+`run_object_id_series` raises a clear error if any input file's init_time
+can't be derived rather than silently grouping it under a fake shared key.
 
 ## `run_matching.py`
 
