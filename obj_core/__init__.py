@@ -20,7 +20,10 @@ from .object_io import (
     ObjectFileContents,
     SeriesEntry,
     iter_object_slices,
+    iter_object_slices_lazy,
+    read_grid_shape,
     read_object_file,
+    read_valid_time_range,
     write_object_file,
 )
 from .id_pipeline import run_object_id_series
@@ -52,6 +55,9 @@ __all__ = [
     "read_object_file",
     "write_object_file",
     "iter_object_slices",
+    "iter_object_slices_lazy",
+    "read_grid_shape",
+    "read_valid_time_range",
     "run_object_id_series",
     "build_model_manifest",
     "MatchRecord",

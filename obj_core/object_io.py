@@ -80,6 +80,15 @@ class ObjectFileContents:
                           # object file, and the full path list isn't otherwise used
 
 
+def read_grid_shape(path: str) -> tuple[int, int]:
+    """Just the (y, x) grid shape -- reads a netCDF variable's declared shape,
+    not its data, so this is essentially free even for a file whose `labels`
+    variable is multiple GB. Used to validate two files share a grid without
+    paying for a full read of either."""
+    with netCDF4.Dataset(path, "r") as ds:
+        return tuple(ds.variables["lat"].shape)
+
+
 def _dt_to_seconds(dt: datetime) -> float:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -249,59 +258,107 @@ def write_object_file(
             ds.member_id = distinct_members[0]
 
 
+def _read_member_ids(ds: netCDF4.Dataset) -> list[str] | None:
+    # member_id is either a dimensioned variable (multiple distinct values) or
+    # a single global attribute (one shared value) -- normalize both into a
+    # plain list (or None) so callers have one interface.
+    if "member_id" in ds.variables:
+        return list(ds.variables["member_id"][:])
+    elif hasattr(ds, "member_id"):
+        return [ds.member_id]
+    return None
+
+
+def _read_valid_times(ds: netCDF4.Dataset) -> list[datetime]:
+    if "valid_time" in ds.variables:
+        return [_seconds_to_dt(t) for t in ds.variables["valid_time"][:]]
+    return [_seconds_to_dt(ds.valid_time)]
+
+
+def read_valid_time_range(path: str) -> tuple[datetime, datetime]:
+    """Just the (min, max) valid_time spanned by a file -- reads only the
+    `valid_time` variable/attribute (a handful of floats at most), never
+    lat/lon/labels, so this is essentially free even for a file whose
+    `labels` variable is multiple GB. Used to bound which truth files are
+    even worth considering for a given forecast case, before touching any
+    of the (potentially large) truth archive itself."""
+    with netCDF4.Dataset(path, "r") as ds:
+        times = _read_valid_times(ds)
+    return min(times), max(times)
+
+
+def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
+    """Read every StormObject field except the labels grid -- always cheap
+    (one 1D array per field, length = number of objects), regardless of how
+    large the file's `labels` variable is."""
+    n_obj = ds.dimensions["object"].size
+    tracked = bool(ds.tracked)
+
+    objects = []
+    for i in range(n_obj):
+        kwargs = {}
+        for fname in _OBJECT_FLOAT_FIELDS:
+            if fname in ("centroid_row", "centroid_col"):
+                continue
+            kwargs[fname] = float(ds.variables[fname][i])
+        centroid_rowcol = (float(ds.variables["centroid_row"][i]), float(ds.variables["centroid_col"][i]))
+        age_seconds = None
+        track_id = None
+        if tracked:
+            raw_age = float(ds.variables["age_seconds"][i])
+            age_seconds = None if np.isnan(raw_age) else raw_age
+            raw_tid = int(ds.variables["track_id"][i])
+            track_id = None if raw_tid == -1 else raw_tid
+        objects.append(
+            StormObject(
+                id=int(ds.variables["id"][i]),
+                area_px=int(ds.variables["area_px"][i]),
+                is_linear=int(ds.variables["is_linear"][i]),
+                centroid_rowcol=centroid_rowcol,
+                age_seconds=age_seconds,
+                track_id=track_id,
+                **kwargs,
+            )
+        )
+    return objects
+
+
+def _read_n_source_files(ds: netCDF4.Dataset, path: str) -> int:
+    if hasattr(ds, "n_source_files"):
+        return int(ds.n_source_files)
+    elif "member_id" not in ds.variables and "valid_time" not in ds.variables:
+        # "single" grouping shape (plain 2D labels, no member/time
+        # dimension) is, by construction, always derived from exactly
+        # one input file -- safe to infer for files written before
+        # n_source_files existed (e.g. a real MRMS archive generated
+        # with an older schema version), with no need to touch the old
+        # source_files string attribute at all. Any other shape
+        # (member_series/ensemble_snapshot/full/init_snapshot) could
+        # genuinely have come from a different number of files, so
+        # inference isn't safe there -- fail loud instead of guessing.
+        return 1
+    else:
+        raise ValueError(
+            f"'{path}' has no 'n_source_files' global attribute and is not a "
+            "single-file-shape object file (has a member_id and/or valid_time "
+            "dimension) -- cannot safely infer a source file count for this shape."
+        )
+
+
 def read_object_file(path: str) -> ObjectFileContents:
     with netCDF4.Dataset(path, "r") as ds:
         lat2d = np.asarray(ds.variables["lat"][:])
         lon2d = np.asarray(ds.variables["lon"][:])
         labels = np.asarray(ds.variables["labels"][:])
 
-        # member_id/valid_time are either a dimensioned variable (multiple
-        # distinct values) or a single global attribute (one shared value) --
-        # normalize both into plain lists here so callers have one interface.
-        if "member_id" in ds.variables:
-            member_ids = list(ds.variables["member_id"][:])
-        elif hasattr(ds, "member_id"):
-            member_ids = [ds.member_id]
-        else:
-            member_ids = None
-
-        if "valid_time" in ds.variables:
-            valid_times = [_seconds_to_dt(t) for t in ds.variables["valid_time"][:]]
-        else:
-            valid_times = [_seconds_to_dt(ds.valid_time)]
-
-        n_obj = ds.dimensions["object"].size
+        member_ids = _read_member_ids(ds)
+        valid_times = _read_valid_times(ds)
         tracked = bool(ds.tracked)
-
-        objects = []
-        for i in range(n_obj):
-            kwargs = {}
-            for fname in _OBJECT_FLOAT_FIELDS:
-                if fname in ("centroid_row", "centroid_col"):
-                    continue
-                kwargs[fname] = float(ds.variables[fname][i])
-            centroid_rowcol = (float(ds.variables["centroid_row"][i]), float(ds.variables["centroid_col"][i]))
-            age_seconds = None
-            track_id = None
-            if tracked:
-                raw_age = float(ds.variables["age_seconds"][i])
-                age_seconds = None if np.isnan(raw_age) else raw_age
-                raw_tid = int(ds.variables["track_id"][i])
-                track_id = None if raw_tid == -1 else raw_tid
-            objects.append(
-                StormObject(
-                    id=int(ds.variables["id"][i]),
-                    area_px=int(ds.variables["area_px"][i]),
-                    is_linear=int(ds.variables["is_linear"][i]),
-                    centroid_rowcol=centroid_rowcol,
-                    age_seconds=age_seconds,
-                    track_id=track_id,
-                    **kwargs,
-                )
-            )
+        objects = _read_objects_table(ds)
 
         member_index = np.asarray(ds.variables["object_member_index"][:]) if "object_member_index" in ds.variables else None
         time_index = np.asarray(ds.variables["object_time_index"][:]) if "object_time_index" in ds.variables else None
+        n_source_files = _read_n_source_files(ds, path)
 
         return ObjectFileContents(
             lat2d=lat2d,
@@ -318,7 +375,7 @@ def read_object_file(path: str) -> ObjectFileContents:
             thresh_2=float(ds.thresh_2),
             area_thresh_km2=float(ds.area_thresh_km2),
             track_bound_disp_km=float(ds.track_bound_disp_km) if hasattr(ds, "track_bound_disp_km") else None,
-            n_source_files=int(ds.n_source_files),
+            n_source_files=n_source_files,
         )
 
 
@@ -358,3 +415,64 @@ def iter_object_slices(
     else:
         member_id = contents.member_ids[0] if contents.member_ids else None
         yield member_id, contents.valid_times[0], contents.labels, contents.objects
+
+
+def iter_object_slices_lazy(
+    path: str,
+) -> Iterator[tuple[str | None, datetime, np.ndarray, list[StormObject]]]:
+    """Same contract/output as iter_object_slices(read_object_file(path)), but
+    avoids read_object_file's single eager `labels_var[:]` read when both a
+    member and a time dimension are present (the shape a large ensemble/
+    long-forecast case takes under file_grouping="init_snapshot") -- confirmed
+    by direct measurement, not assumed, that eagerly loading the whole
+    `labels` array for a real 5-member x 133-lead-time x 1059x1799 case file
+    peaks at ~10 GB transient memory (netCDF4/HDF5 decompression overhead on
+    top of the final ~5 GB array), too much headroom to risk when processing
+    many such files back-to-back on a memory-constrained machine.
+
+    Reads one member's full (time, y, x) block at a time instead
+    (`labels_var[mi, :, :, :]`) -- measured at ~2 GB peak per member with no
+    extra wall-clock cost (same order as the eager read). Reading a single
+    (member, time) 2D slice at a time is cheaper still (~tens of MB peak) but
+    measured ~16x slower overall, because this file's native chunk layout
+    tiles the spatial dimensions -- a lone full-domain 2D read touches many
+    chunks and thrashes the HDF5 chunk cache, whereas one member's block
+    matches the chunking's own time-major layout.
+
+    For the other three shapes (no member+time combination) `labels` is
+    already small (a few MB up to ~1 GB) -- no special-casing needed there,
+    this just delegates to the normal eager read.
+    """
+    with netCDF4.Dataset(path, "r") as ds:
+        has_member_dim = "member" in ds.dimensions
+        has_time_dim = "time" in ds.dimensions
+        needs_member_by_member_read = has_member_dim and has_time_dim
+
+        if not needs_member_by_member_read:
+            member_ids = None
+            valid_times = None
+            objects = None
+            member_index = None
+            time_index = None
+            labels_var = None
+        else:
+            member_ids = _read_member_ids(ds)
+            valid_times = _read_valid_times(ds)
+            objects = _read_objects_table(ds)
+            member_index = np.asarray(ds.variables["object_member_index"][:])
+            time_index = np.asarray(ds.variables["object_time_index"][:])
+            labels_var = ds.variables["labels"]
+
+            for mi, member_id in enumerate(member_ids):
+                member_labels = np.asarray(labels_var[mi, :, :, :])
+                member_object_mask = member_index == mi
+                for ti, vt in enumerate(valid_times):
+                    slice_mask = member_object_mask & (time_index == ti)
+                    slice_objects = [o for o, keep in zip(objects, slice_mask) if keep]
+                    yield member_id, vt, member_labels[ti], slice_objects
+                del member_labels
+
+    if not needs_member_by_member_read:
+        # small shape (no member+time combination) -- labels is already cheap
+        # (a few MB up to ~1 GB), no special-casing needed, delegate normally
+        yield from iter_object_slices(read_object_file(path))

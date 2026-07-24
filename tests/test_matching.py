@@ -268,3 +268,167 @@ def test_matching_performance_with_large_objects():
     elapsed = time.time() - t0
     print(f"[match-check6] {len(truth_objects)}x{len(forecast_objects)} pairs, {len(records)} records, {elapsed:.2f}s")
     assert elapsed < 10.0, f"matching took {elapsed:.2f}s -- expected coords_km caching to keep this fast"
+
+
+# --- Check 7: iter_object_slices_lazy correctness + memory ------------------
+
+def test_iter_object_slices_lazy_matches_eager_read(tmp_path):
+    """iter_object_slices_lazy(path) must yield the exact same
+    (member_id, valid_time, labels2d, objects) sequence as
+    iter_object_slices(read_object_file(path)) on a real init_snapshot-shaped
+    (member AND time dims both present) file -- the shape large ensemble/
+    long-forecast cases take, and the one this lazy reader exists for."""
+    from python_obj.obj_core import (
+        IdentificationResult, iter_object_slices, iter_object_slices_lazy, read_object_file, write_object_file,
+    )
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+
+    results = []
+    for mi, member_id in enumerate(["mem_1", "mem_2", "mem_3"]):
+        for ti in range(4):
+            data = _blob(20 + 5 * mi, 20 + 5 * ti, r=2)
+            labels, objects = identify_objects(data, gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+            results.append(IdentificationResult(
+                labels=labels, objects=objects, valid_time=t0 + timedelta(hours=ti), member_id=member_id,
+            ))
+
+    path = str(tmp_path / "init_snapshot.nc")
+    write_object_file(path, t0, lat2d, lon2d, results, len(results), 20.0, 30.0, 1.0)
+
+    import netCDF4
+    with netCDF4.Dataset(path) as ds:
+        assert "member" in ds.dimensions and "time" in ds.dimensions
+
+    eager = list(iter_object_slices(read_object_file(path)))
+    lazy = list(iter_object_slices_lazy(path))
+
+    assert len(eager) == len(lazy) == 12  # 3 members x 4 times
+    for (em, ev, el, eo), (lm, lv, ll, lo) in zip(eager, lazy):
+        assert em == lm and ev == lv
+        assert np.array_equal(el, ll)
+        assert [o.id for o in eo] == [o.id for o in lo]
+    print(f"\n[lazy-check1] {len(eager)} slices identical between eager and lazy reads")
+
+
+def test_iter_object_slices_lazy_peak_memory_bounded(tmp_path):
+    """Direct proof of the measured claim motivating this reader: peak memory
+    for the lazy, member-by-member read must stay far below what eagerly
+    loading the whole (member, time, y, x) labels array would need -- mirrors
+    the tracemalloc-based regression test already used for the write_object_file
+    streaming fix."""
+    import tracemalloc
+
+    from python_obj.obj_core import IdentificationResult, iter_object_slices_lazy, write_object_file
+
+    lat2d, lon2d = _synthetic_grid(ny=300, nx=300)
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+
+    n_members, n_times = 10, 20
+    results = []
+    for mi in range(n_members):
+        for ti in range(n_times):
+            data = _blob(50, 50, r=2, shape=(300, 300))
+            labels, objects = identify_objects(data, gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+            results.append(IdentificationResult(
+                labels=labels, objects=objects, valid_time=t0 + timedelta(hours=ti), member_id=f"mem_{mi}",
+            ))
+
+    path = str(tmp_path / "lazy_memory.nc")
+    write_object_file(path, t0, lat2d, lon2d, results, len(results), 20.0, 30.0, 1.0)
+
+    eager_full_array_bytes = n_members * n_times * 300 * 300 * 4  # what one eager read would materialize
+    one_member_bytes = n_times * 300 * 300 * 4
+
+    tracemalloc.start()
+    n_slices = 0
+    for member_id, vt, labels2d, objects in iter_object_slices_lazy(path):
+        n_slices += 1
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    print(f"\n[lazy-check2] {n_slices} slices consumed, eager-equivalent array would be "
+          f"{eager_full_array_bytes / 1e6:.1f} MB, lazy traced peak: {peak / 1e6:.2f} MB")
+    assert n_slices == n_members * n_times
+    # the lazy reader should never hold more than roughly one member's worth
+    # of decompressed data (n_times x 300 x 300 x 4 bytes) at once, not all
+    # n_members at once -- bound against one member's own size (generous 4x
+    # margin: netCDF4/HDF5 decompression itself has a measured ~2x transient
+    # overhead over the final array size, plus fixed Python/tracemalloc
+    # overhead that matters more at this small synthetic grid's scale) rather
+    # than a fixed fraction, so the assertion scales with n_members chosen above
+    assert peak < one_member_bytes * 4, (
+        f"lazy read peak ({peak / 1e6:.2f} MB) is more than 4x one member's own size "
+        f"({one_member_bytes / 1e6:.1f} MB) -- expected roughly one member's worth, not more"
+    )
+    assert peak < eager_full_array_bytes * 0.5, (
+        f"lazy read peak ({peak / 1e6:.2f} MB) unexpectedly close to the full "
+        f"eager-equivalent size ({eager_full_array_bytes / 1e6:.1f} MB)"
+    )
+
+
+def test_run_matching_series_with_init_snapshot_forecast_matches_per_member_correctly(tmp_path):
+    """Real init_snapshot-shaped (member AND time dims both present) forecast
+    file matched via run_matching_series -- the shape this project's real
+    MPAS batch object files use, and the one iter_object_slices_lazy's
+    member-by-member read path exists for. Confirms member bookkeeping
+    survives the lazy read: each member's objects must be matched only
+    against the correct valid_time's truth, independently per member, with
+    no mixing across members or times."""
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    t1 = t0 + timedelta(hours=1)
+
+    truth_data = _blob(50, 50)
+    truth_labels, truth_objects = identify_objects(truth_data, gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    truth_path_0 = str(tmp_path / "truth_t0.nc")
+    write_object_file(truth_path_0, t0, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels, objects=truth_objects, valid_time=t0, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+    truth_path_1 = str(tmp_path / "truth_t1.nc")
+    write_object_file(truth_path_1, t1, lat2d, lon2d,
+        [IdentificationResult(labels=truth_labels, objects=truth_objects, valid_time=t1, member_id=None)],
+        1, 20.0, 30.0, 1.0)
+
+    # mem_1: co-located with truth at both times -> should hit both times.
+    # mem_2: far from truth at both times -> should false_alarm both times.
+    close_labels, close_objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+    far_labels, far_objects = identify_objects(_blob(90, 90), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+
+    forecast_path = str(tmp_path / "forecast_init_snapshot.nc")
+    write_object_file(forecast_path, t0, lat2d, lon2d, [
+        IdentificationResult(labels=close_labels, objects=close_objects, valid_time=t0, member_id="mem_1"),
+        IdentificationResult(labels=close_labels, objects=close_objects, valid_time=t1, member_id="mem_1"),
+        IdentificationResult(labels=far_labels, objects=far_objects, valid_time=t0, member_id="mem_2"),
+        IdentificationResult(labels=far_labels, objects=far_objects, valid_time=t1, member_id="mem_2"),
+    ], 1, 20.0, 30.0, 1.0)
+
+    import netCDF4
+    with netCDF4.Dataset(forecast_path) as ds:
+        assert "member" in ds.dimensions and "time" in ds.dimensions
+
+    summary = run_matching_series(
+        [truth_path_0, truth_path_1], [forecast_path],
+        max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+        output_dir=str(tmp_path / "matches"), max_time_offset_minutes=5.0,
+    )
+    print(f"\n[lazy-check3] {len(summary.output_paths)} match files, skipped={summary.skipped_forecast_times}")
+    assert len(summary.output_paths) == 2
+    assert summary.skipped_forecast_times == []
+
+    for path in summary.output_paths:
+        contents = read_match_file(path)
+        assert contents.member_ids == ["mem_1", "mem_2"]
+        by_member: dict[str, list[str]] = {"mem_1": [], "mem_2": []}
+        for rec, mi in zip(contents.records, contents.member_index):
+            by_member[contents.member_ids[mi]].append(rec.category)
+        print(f"[lazy-check3] {os.path.basename(path)}: {by_member}")
+        assert "hit" in by_member["mem_1"] and "false_alarm" not in by_member["mem_1"]
+        assert "false_alarm" in by_member["mem_2"] and "hit" not in by_member["mem_2"]
