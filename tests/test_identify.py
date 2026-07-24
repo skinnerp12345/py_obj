@@ -140,6 +140,59 @@ def test_tracking_genericity_obs_vs_forecast_labels():
 
 # --- Check 5: object file round-trip, all four shapes -----------------------
 
+# --- Check 4b: write_object_file streams labels, never builds a duplicate
+# full-size consolidated array (the real, confirmed OOM cause fixed here) ---
+
+def test_write_object_file_does_not_allocate_duplicate_labels_array(tmp_path):
+    """Real production bug: for a large multi-member/multi-lead-time case
+    (e.g. 5 members x 133 hourly lead times on a full-CONUS grid),
+    write_object_file() used to build ONE consolidated labels_stack array
+    the same total size as every individual result's label array combined,
+    on top of those individual arrays the caller already holds -- a real
+    OOM kill in production. This test proves the fix quantitatively: peak
+    memory traced *inside* write_object_file() (results' own arrays are
+    built and held BEFORE tracing starts, so they don't count) must stay
+    well below the size of one duplicate consolidated array -- which the
+    pre-fix implementation would have allocated in full.
+    """
+    import tracemalloc
+
+    ny, nx = 200, 200
+    n_members, n_times = 20, 20
+    lat2d, lon2d = _synthetic_grid(ny=ny, nx=nx)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+
+    # built and held BEFORE tracing starts -- mirrors how the caller
+    # (id_pipeline.py's all_results) already owns every individual label
+    # array before write_object_file() is ever called.
+    results = [
+        IdentificationResult(
+            labels=np.zeros((ny, nx), dtype=np.int32), objects=[],
+            valid_time=t0 + timedelta(minutes=t), member_id=f"mem{m}",
+        )
+        for m in range(n_members) for t in range(n_times)
+    ]
+
+    one_consolidated_array_bytes = ny * nx * 4 * n_members * n_times  # int32
+
+    tracemalloc.start()
+    path = str(tmp_path / "big.nc")
+    write_object_file(path, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    print(f"\n[id-check4b] peak traced memory inside write_object_file={peak / 1e6:.1f} MB "
+          f"(one duplicate consolidated array would be {one_consolidated_array_bytes / 1e6:.1f} MB)")
+    assert peak < one_consolidated_array_bytes * 0.5, (
+        "write_object_file must not build a second, full-size consolidated labels array"
+    )
+
+    # correctness: streaming write must still produce the exact right shape/content
+    c = read_object_file(path)
+    assert c.labels.shape == (n_members, n_times, ny, nx)
+    np.testing.assert_array_equal(c.labels, np.zeros((n_members, n_times, ny, nx), dtype=np.int32))
+
+
 def test_object_file_roundtrip_all_shapes(tmp_path):
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -154,7 +207,7 @@ def test_object_file_roundtrip_all_shapes(tmp_path):
     # (a) single
     r_single = make_result(0, None, t0)
     p = str(tmp_path / "single.nc")
-    write_object_file(p, t0, lat2d, lon2d, [r_single], ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p, t0, lat2d, lon2d, [r_single], 1, 20.0, 30.0, 1.0)
     c = read_object_file(p)
     assert c.labels.shape == (60, 60)
     assert c.member_ids is None and c.time_index is None and c.member_index is None
@@ -163,7 +216,7 @@ def test_object_file_roundtrip_all_shapes(tmp_path):
     # (b) member_series
     results = [make_result(i, "mem1", t0 + timedelta(minutes=5 * i)) for i in range(3)]
     p = str(tmp_path / "member_series.nc")
-    write_object_file(p, t0, lat2d, lon2d, results, ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
     c = read_object_file(p)
     assert c.labels.shape == (3, 60, 60)
     assert c.member_ids == ["mem1"] and c.member_index is None
@@ -173,7 +226,7 @@ def test_object_file_roundtrip_all_shapes(tmp_path):
     # (c) ensemble_snapshot
     results = [make_result(i, f"mem{i+1}", t0) for i in range(3)]
     p = str(tmp_path / "ensemble_snapshot.nc")
-    write_object_file(p, t0, lat2d, lon2d, results, ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
     c = read_object_file(p)
     assert c.labels.shape == (3, 60, 60)
     assert c.member_ids == ["mem1", "mem2", "mem3"] and c.time_index is None
@@ -185,7 +238,7 @@ def test_object_file_roundtrip_all_shapes(tmp_path):
         for t in range(2):
             results.append(make_result(m + t, f"mem{m+1}", t0 + timedelta(minutes=5 * t)))
     p = str(tmp_path / "full.nc")
-    write_object_file(p, t0, lat2d, lon2d, results, ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
     c = read_object_file(p)
     assert c.labels.shape == (2, 2, 60, 60)
     assert c.member_ids == ["mem1", "mem2"] and len(c.valid_times) == 2

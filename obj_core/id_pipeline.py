@@ -142,7 +142,7 @@ def run_object_id_series(
             path = os.path.join(output_dir, _default_output_name("single", r.member_id, r.valid_time))
             write_object_file(
                 path, init_time, grid_geometry.lat2d, grid_geometry.lon2d, [r],
-                source_files=[e.filepath for e in manifest if e.member_id == r.member_id and e.valid_time == r.valid_time],
+                n_source_files=len([e.filepath for e in manifest if e.member_id == r.member_id and e.valid_time == r.valid_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
             )
@@ -156,7 +156,7 @@ def run_object_id_series(
             path = os.path.join(output_dir, _default_output_name("member_series", member_id, None))
             write_object_file(
                 path, init_time, grid_geometry.lat2d, grid_geometry.lon2d, results,
-                source_files=[e.filepath for e in manifest if e.member_id == member_id],
+                n_source_files=len([e.filepath for e in manifest if e.member_id == member_id]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
             )
@@ -170,7 +170,7 @@ def run_object_id_series(
             path = os.path.join(output_dir, _default_output_name("ensemble_snapshot", None, valid_time))
             write_object_file(
                 path, init_time, grid_geometry.lat2d, grid_geometry.lon2d, results,
-                source_files=[e.filepath for e in manifest if e.valid_time == valid_time],
+                n_source_files=len([e.filepath for e in manifest if e.valid_time == valid_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
             )
@@ -180,7 +180,7 @@ def run_object_id_series(
         path = os.path.join(output_dir, _default_output_name("full", None, None))
         write_object_file(
             path, init_time, grid_geometry.lat2d, grid_geometry.lon2d, all_results,
-            source_files=[e.filepath for e in manifest],
+            n_source_files=len(manifest),
             thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
             tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
         )
@@ -208,7 +208,7 @@ def run_object_id_series(
             path = os.path.join(output_dir, _default_output_name("init_snapshot", None, None, init_time=this_init_time))
             write_object_file(
                 path, this_init_time, grid_geometry.lat2d, grid_geometry.lon2d, results,
-                source_files=[e.filepath for e in manifest if e.init_time == this_init_time],
+                n_source_files=len([e.filepath for e in manifest if e.init_time == this_init_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
             )

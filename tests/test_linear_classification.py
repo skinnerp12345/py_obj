@@ -184,7 +184,7 @@ def test_is_linear_roundtrip_single_and_ensemble_snapshot(tmp_path):
     # single shape
     r = make_result(None)
     p_single = str(tmp_path / "single.nc")
-    write_object_file(p_single, t0, lat2d, lon2d, [r], ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p_single, t0, lat2d, lon2d, [r], 1, 20.0, 30.0, 1.0)
     c = read_object_file(p_single)
     is_linear_values = sorted(o.is_linear for o in c.objects)
     print(f"\n[linear-check6] single: is_linear values={is_linear_values}")
@@ -194,7 +194,7 @@ def test_is_linear_roundtrip_single_and_ensemble_snapshot(tmp_path):
     # ensemble_snapshot shape
     results = [make_result(f"mem{i+1}") for i in range(3)]
     p_ens = str(tmp_path / "ensemble.nc")
-    write_object_file(p_ens, t0, lat2d, lon2d, results, ["x"], 20.0, 30.0, 1.0)
+    write_object_file(p_ens, t0, lat2d, lon2d, results, 1, 20.0, 30.0, 1.0)
     c_ens = read_object_file(p_ens)
     print(f"[linear-check6] ensemble_snapshot: n_objects={len(c_ens.objects)}, "
           f"is_linear values={sorted(o.is_linear for o in c_ens.objects)}")

@@ -75,7 +75,9 @@ class ObjectFileContents:
     thresh_2: float
     area_thresh_km2: float
     track_bound_disp_km: float | None
-    source_files: list[str]
+    n_source_files: int  # count, not the file list itself -- a large ensemble/long
+                          # forecast can consolidate hundreds of source files into one
+                          # object file, and the full path list isn't otherwise used
 
 
 def _dt_to_seconds(dt: datetime) -> float:
@@ -94,7 +96,7 @@ def write_object_file(
     lat2d: np.ndarray,
     lon2d: np.ndarray,
     results: list[IdentificationResult],
-    source_files: list[str],
+    n_source_files: int,
     thresh_1: float,
     thresh_2: float,
     area_thresh_km2: float,
@@ -133,21 +135,22 @@ def write_object_file(
 
     ny, nx = lat2d.shape
 
-    # stack labels into the right shape
+    # label_dims only -- NOT a pre-built consolidated array. The netCDF
+    # `labels` variable is created below and each result's label array is
+    # written directly into its own target slice as the loop reaches it,
+    # rather than first stacking every result into one big in-memory array
+    # and writing that. This matters at real scale: a case with many members
+    # x many lead times (e.g. 5 members x 133 hourly lead times on a
+    # full-CONUS grid) already needs several GB just to hold every result's
+    # own label array (owned by the caller); a second, equally large
+    # consolidated copy built here on top of that was a real, confirmed
+    # cause of an OOM kill in production -- removing it roughly halves peak
+    # memory for this function with no change in the file this produces.
     if use_member_dim and use_time_dim:
-        labels_stack = np.zeros((len(member_ids), len(valid_times), ny, nx), dtype=np.int32)
-        for r in results:
-            labels_stack[member_id_to_idx[r.member_id], time_to_idx[r.valid_time]] = r.labels
         label_dims = ("member", "time", "y", "x")
     elif use_member_dim:
-        labels_stack = np.zeros((len(member_ids), ny, nx), dtype=np.int32)
-        for r in results:
-            labels_stack[member_id_to_idx[r.member_id]] = r.labels
         label_dims = ("member", "y", "x")
     elif use_time_dim:
-        labels_stack = np.zeros((len(valid_times), ny, nx), dtype=np.int32)
-        for r in results:
-            labels_stack[time_to_idx[r.valid_time]] = r.labels
         label_dims = ("time", "y", "x")
     else:
         if len(results) != 1:
@@ -155,7 +158,6 @@ def write_object_file(
                 "write_object_file: multiple results given but only one distinct "
                 "member_id and one distinct valid_time -- nothing distinguishes them"
             )
-        labels_stack = results[0].labels.astype(np.int32)
         label_dims = ("y", "x")
 
     # flatten objects into a tidy table with member_index/time_index columns
@@ -186,7 +188,15 @@ def write_object_file(
         lon_var[:, :] = lon2d
 
         labels_var = ds.createVariable("labels", "i4", label_dims, zlib=True)
-        labels_var[...] = labels_stack
+        for r in results:
+            if use_member_dim and use_time_dim:
+                labels_var[member_id_to_idx[r.member_id], time_to_idx[r.valid_time], :, :] = r.labels
+            elif use_member_dim:
+                labels_var[member_id_to_idx[r.member_id], :, :] = r.labels
+            elif use_time_dim:
+                labels_var[time_to_idx[r.valid_time], :, :] = r.labels
+            else:
+                labels_var[:, :] = r.labels
 
         if member_ids:
             member_var = ds.createVariable("member_id", str, ("member",))
@@ -224,7 +234,7 @@ def write_object_file(
 
         if init_time is not None:
             ds.init_time = init_time.isoformat()
-        ds.source_files = ";".join(source_files)
+        ds.n_source_files = n_source_files
         ds.thresh_1 = thresh_1
         ds.thresh_2 = thresh_2
         ds.area_thresh_km2 = area_thresh_km2
@@ -308,7 +318,7 @@ def read_object_file(path: str) -> ObjectFileContents:
             thresh_2=float(ds.thresh_2),
             area_thresh_km2=float(ds.area_thresh_km2),
             track_bound_disp_km=float(ds.track_bound_disp_km) if hasattr(ds, "track_bound_disp_km") else None,
-            source_files=ds.source_files.split(";"),
+            n_source_files=int(ds.n_source_files),
         )
 
 

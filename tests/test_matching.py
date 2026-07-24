@@ -182,7 +182,7 @@ def test_time_tolerance_skip_and_match(tmp_path):
     write_object_file(
         truth_path, t0, lat2d, lon2d,
         [IdentificationResult(labels=labels, objects=objects, valid_time=t0 + timedelta(minutes=2), member_id=None)],
-        ["x"], 20.0, 30.0, 1.0,
+        1, 20.0, 30.0, 1.0,
     )
 
     # forecast A: within 5 min of truth (offset 2 min) -> should match
@@ -190,7 +190,7 @@ def test_time_tolerance_skip_and_match(tmp_path):
     write_object_file(
         forecast_a_path, t0, lat2d, lon2d,
         [IdentificationResult(labels=labels, objects=objects, valid_time=t0, member_id=None)],
-        ["y"], 20.0, 30.0, 1.0,
+        1, 20.0, 30.0, 1.0,
     )
 
     # forecast B: 10 min offset from the only truth time -> should be skipped
@@ -198,7 +198,7 @@ def test_time_tolerance_skip_and_match(tmp_path):
     write_object_file(
         forecast_b_path, t0, lat2d, lon2d,
         [IdentificationResult(labels=labels, objects=objects, valid_time=t0 + timedelta(minutes=12), member_id=None)],
-        ["y"], 20.0, 30.0, 1.0,
+        1, 20.0, 30.0, 1.0,
     )
 
     summary = run_matching_series(
