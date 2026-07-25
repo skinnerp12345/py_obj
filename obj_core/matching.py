@@ -68,6 +68,9 @@ class MatchRecord:
     truth_id: int  # -1 if no truth object applies to this row
     forecast_id: int  # -1 if no forecast object applies to this row
     ti_score: float  # area-weighted TI; 0.0 for miss/false_alarm (no candidate existed at all)
+    centroid_dist_km: float | None = None  # a pair property, not per-side; None unless both a
+                                            # truth and forecast object are present on this row
+                                            # (hit/truth_extra/forecast_extra, never miss/false_alarm)
 
     truth_area_km2: float | None = None
     truth_max_intensity: float | None = None
@@ -104,6 +107,14 @@ def _record_from_objects(
         kwargs["forecast_id"] = forecast_obj.id
         for f in _MATCH_RECORD_SIDE_FIELDS:
             kwargs[f"forecast_{f}"] = getattr(forecast_obj, f)
+    if truth_obj is not None and forecast_obj is not None:
+        # cheap (two points, not per-pixel like boundary_dist_km) -- fine to
+        # recompute here rather than threading it out of the hot pairwise
+        # loop in match_objects_one_timestep
+        kwargs["centroid_dist_km"] = centroid_dist_km(
+            (truth_obj.centroid_x_km, truth_obj.centroid_y_km),
+            (forecast_obj.centroid_x_km, forecast_obj.centroid_y_km),
+        )
     return MatchRecord(**kwargs)
 
 

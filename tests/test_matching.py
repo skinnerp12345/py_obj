@@ -114,6 +114,20 @@ def test_match_objects_one_timestep_all_categories():
     assert extra.truth_id == truth_id_at_50_50
     assert extra.forecast_id != -1  # recorded its near-miss candidate, not -1
 
+    # centroid_dist_km: populated for any row with both a truth and forecast
+    # object (hit, truth_extra), always None for miss/false_alarm (only one
+    # side present)
+    for r in by_category["hit"] + by_category["truth_extra"]:
+        assert r.centroid_dist_km is not None
+        assert r.centroid_dist_km >= 0.0
+    for r in by_category["miss"] + by_category["false_alarm"]:
+        assert r.centroid_dist_km is None
+    # T1 (10,10) hits F1 (11,11): 1 row/col diagonal at 0.01 deg/step ~1.11 km/deg
+    # -> expect a small positive distance (not exactly 0, confirms it's a real computation)
+    t1_hit = next(r for r in by_category["hit"] if r.truth_id == next(o.id for o in truth_objects if o.centroid_rowcol == (10.0, 10.0)))
+    print(f"[match-check2] T1/F1 centroid_dist_km={t1_hit.centroid_dist_km:.3f}")
+    assert 0.0 < t1_hit.centroid_dist_km < 5.0
+
 
 # --- Check 3: real end-to-end run -------------------------------------------
 

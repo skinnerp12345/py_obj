@@ -18,7 +18,7 @@ from .matching import MatchRecord
 _TIME_UNITS = "seconds since 1970-01-01 00:00:00"
 
 _MATCH_FLOAT_FIELDS = [
-    "ti_score",
+    "ti_score", "centroid_dist_km",
     "truth_area_km2", "truth_max_intensity", "truth_mean_intensity", "truth_centroid_lat", "truth_centroid_lon",
     "truth_solidity", "truth_major_axis_length", "truth_minor_axis_length", "truth_eccentricity",
     "forecast_area_km2", "forecast_max_intensity", "forecast_mean_intensity", "forecast_centroid_lat", "forecast_centroid_lon",
