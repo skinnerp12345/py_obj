@@ -54,6 +54,7 @@ class MatchFileContents:
                                # one truth file; a consolidated (file_grouping="init_snapshot")
                                # file spanning many times can genuinely have used many
     n_forecast_source_files: int  # same rationale, forecast side
+    init_time: datetime | None  # only meaningful/populated for file_grouping="init_snapshot"
 
 
 def _dt_to_seconds(dt: datetime) -> float:
@@ -75,6 +76,7 @@ def write_match_file(
     max_centroid_disp_km: float,
     ti_threshold: float,
     max_time_offset_minutes: float | None = None,
+    init_time: datetime | None = None,
 ) -> None:
     """Write one match file from a list of per-(member,time) results.
 
@@ -151,6 +153,8 @@ def write_match_file(
 
         ds.n_truth_source_files = n_truth_source_files
         ds.n_forecast_source_files = n_forecast_source_files
+        if init_time is not None:
+            ds.init_time = init_time.isoformat()
         ds.max_boundary_disp_km = max_boundary_disp_km
         ds.max_centroid_disp_km = max_centroid_disp_km
         ds.ti_threshold = ti_threshold
@@ -208,4 +212,5 @@ def read_match_file(path: str) -> MatchFileContents:
             max_time_offset_minutes=float(ds.max_time_offset_minutes) if hasattr(ds, "max_time_offset_minutes") else None,
             n_truth_source_files=int(ds.n_truth_source_files),
             n_forecast_source_files=int(ds.n_forecast_source_files),
+            init_time=datetime.fromisoformat(ds.init_time) if hasattr(ds, "init_time") else None,
         )

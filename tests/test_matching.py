@@ -501,6 +501,34 @@ def test_run_matching_series_init_snapshot_consolidates_one_file_per_case(tmp_pa
           f"n_forecast_source_files={contents.n_forecast_source_files}")
     assert contents.n_truth_source_files == 2  # both truth_path_0 and truth_path_1 were actually used
     assert contents.n_forecast_source_files == 1  # only the one forecast file
+    assert contents.init_time == init_time
+
+
+def test_run_matching_series_per_time_leaves_init_time_unset(tmp_path):
+    """file_grouping='per_time' (the default) never writes init_time -- it
+    isn't a well-defined concept there (one output file's forecast valid_time
+    need not correspond to any single init_time)."""
+    from python_obj.obj_core import IdentificationResult, write_object_file
+
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    labels, objects = identify_objects(_blob(50, 50), gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
+
+    truth_path = str(tmp_path / "truth.nc")
+    write_object_file(truth_path, t0, lat2d, lon2d,
+        [IdentificationResult(labels=labels, objects=objects, valid_time=t0, member_id=None)], 1, 20.0, 30.0, 1.0)
+    forecast_path = str(tmp_path / "forecast.nc")
+    write_object_file(forecast_path, t0, lat2d, lon2d,
+        [IdentificationResult(labels=labels, objects=objects, valid_time=t0, member_id=None)], 1, 20.0, 30.0, 1.0)
+
+    summary = run_matching_series(
+        [truth_path], [forecast_path],
+        max_boundary_disp_km=40.0, max_centroid_disp_km=40.0, ti_threshold=0.2,
+        output_dir=str(tmp_path / "matches"), max_time_offset_minutes=5.0,
+    )
+    contents = read_match_file(summary.output_paths[0])
+    assert contents.init_time is None
 
 
 def test_run_matching_series_init_snapshot_with_jittered_truth_times(tmp_path):

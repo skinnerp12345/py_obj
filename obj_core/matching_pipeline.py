@@ -181,6 +181,7 @@ def run_matching_series(
                 n_truth_source_files=len(truth_files_used), n_forecast_source_files=len(forecast_files_used),
                 max_boundary_disp_km=max_boundary_disp_km, max_centroid_disp_km=max_centroid_disp_km,
                 ti_threshold=ti_threshold, max_time_offset_minutes=max_time_offset_minutes,
+                init_time=init_time,
             )
             output_paths.append(out_path)
     else:
