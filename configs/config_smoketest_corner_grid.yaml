@@ -1,0 +1,22 @@
+# Same real bundled MRMS files as config_smoketest.yaml, but demonstrates the
+# OTHER target-grid mode: a computed grid (southwest corner + regular km
+# spacing + dimensions) instead of an existing model grid file. sw_lat/sw_lon
+# below is chosen well inside the bundled sample MRMS files' own real
+# coverage (confirmed: lat 41.5-49.2, lon -86.5--75.4), so this exercises a
+# real interpolation, not just grid construction.
+#
+# Use this to confirm the corner+spacing+dims mode end to end without
+# needing any model grid file at all.
+
+interpolation:
+  raw_mrms_dir: ../sample_data/mpas_case/mrms
+  interp_mrms_dir: output/interp_mrms_smoketest_corner_grid
+  target_grid_sw_lat: 42.0
+  target_grid_sw_lon: -86.0
+  target_grid_dx_km: 3.0
+  target_grid_nx: 50
+  target_grid_ny: 50
+  n_workers: 2
+  weight_cache_dir: output/weight_cache
+  date_range: null
+  max_files: null

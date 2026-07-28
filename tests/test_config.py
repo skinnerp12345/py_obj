@@ -427,3 +427,65 @@ def test_lead_units_minutes_synthetic(tmp_path):
     print(f"[config-check6] synthetic 5-min model, lead_units=minutes, forecast_lead_minutes=35 "
           f"-> valid_time={field.valid_time}")
     assert field.valid_time == datetime(2023, 5, 1, 0, 35, 0)
+
+
+# --- Check 7: interpolation target-grid mode validation ---------------------
+
+def _base_interp_dict(**extra) -> dict:
+    d = {"raw_mrms_dir": "raw", "interp_mrms_dir": "interp"}
+    d.update(extra)
+    return d
+
+
+def test_target_grid_corner_spacing_dims_mode_parses(tmp_path):
+    cfg_dict = {"interpolation": _base_interp_dict(
+        target_grid_sw_lat=35.0, target_grid_sw_lon=-98.0,
+        target_grid_dx_km=3.0, target_grid_nx=400, target_grid_ny=300,
+    )}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    cfg = load_config(str(p))
+    print(f"\n[config-check7] {cfg.interpolation}")
+    assert cfg.interpolation.target_grid_file is None
+    assert cfg.interpolation.target_grid_sw_lat == 35.0
+    assert cfg.interpolation.target_grid_nx == 400
+    assert cfg.interpolation.target_grid_dy_km is None  # left for build_corner_spacing_grid to default
+
+
+def test_target_grid_both_modes_given_raises(tmp_path):
+    cfg_dict = {"interpolation": _base_interp_dict(
+        target_grid_file="grid.nc",
+        target_grid_sw_lat=35.0, target_grid_sw_lon=-98.0,
+        target_grid_dx_km=3.0, target_grid_nx=400, target_grid_ny=300,
+    )}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_config(str(p))
+
+
+def test_target_grid_neither_mode_given_raises(tmp_path):
+    cfg_dict = {"interpolation": _base_interp_dict()}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="needs either"):
+        load_config(str(p))
+
+
+def test_target_grid_partial_corner_fields_raises(tmp_path):
+    """Giving only SOME of the corner+spacing+dims fields (a likely typo/
+    omission, e.g. forgetting target_grid_ny) must raise a clear, specific
+    error naming what's missing -- not silently fall through to the
+    neither-mode-given error, which would be much less actionable."""
+    cfg_dict = {"interpolation": _base_interp_dict(
+        target_grid_sw_lat=35.0, target_grid_sw_lon=-98.0, target_grid_dx_km=3.0,
+        # target_grid_nx/ny omitted
+    )}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="requires all of"):
+        load_config(str(p))

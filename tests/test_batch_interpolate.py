@@ -17,7 +17,7 @@ import netCDF4
 import numpy as np
 import pytest
 
-from python_obj.regrid import discover_mrms_files, load_mrms_grib2, make_output_path, run_batch_interpolation
+from python_obj.regrid import build_corner_spacing_grid, discover_mrms_files, load_mrms_grib2, make_output_path, run_batch_interpolation
 from python_obj.regrid.grid_spec import GridSpec, crop_to_bbox
 from python_obj.regrid.io_grid import load_target_grid
 from python_obj.regrid.io_mrms import MRMS_MISSING_VALUE, clip_near_zero_sentinel
@@ -131,6 +131,53 @@ def test_batch_interpolation_small_subset(tmp_path):
         assert not np.any(np.isnan(data))
 
     print(f"\n[batch-check3] {summary}")
+
+
+def test_batch_interpolation_with_computed_corner_spacing_grid(tmp_path):
+    """The target_grid= parameter (a pre-built GridSpec, e.g. from
+    build_corner_spacing_grid) as an alternative to target_grid_file --
+    exercised against real bundled MRMS data, with a SW corner chosen well
+    inside its known real coverage (confirmed separately: lat 41.5-49.2,
+    lon -86.5--75.4)."""
+    out_dir = str(tmp_path / "interp_mrms_corner_grid")
+    target_grid = build_corner_spacing_grid(sw_lat=42.0, sw_lon=-86.0, dx_km=3.0, nx=20, ny=20)
+
+    summary = run_batch_interpolation(
+        input_dir=INPUT_DIR,
+        output_dir=out_dir,
+        target_grid=target_grid,
+        weight_cache_dir=WEIGHT_CACHE_DIR,
+        n_workers=2,
+        date_range=("20230501", "20230501"),
+        max_files=2,
+    )
+    assert summary.n_total == 2
+    assert summary.n_failed == 0, f"expected no failures, got: {summary.failures}"
+
+    written = sorted(glob.glob(os.path.join(out_dir, "20230501", "*.nc")))
+    assert len(written) == 2
+    with netCDF4.Dataset(written[0]) as ds:
+        assert ds.variables["refl_consv"].shape == (20, 20)
+        lat = ds.variables["lat"][:]
+        lon = ds.variables["lon"][:]
+        assert abs(float(lat[0, 0]) - 42.0) < 1e-4
+        assert abs(float(lon[0, 0]) - (-86.0)) < 1e-4
+        data = ds.variables["refl_consv"][:]
+        assert not np.any(np.isnan(data))
+    print(f"\n[batch-check-corner-grid] {summary}")
+
+
+def test_run_batch_interpolation_requires_exactly_one_target_grid_mode(tmp_path):
+    out_dir = str(tmp_path / "interp_mrms_bad")
+    with pytest.raises(ValueError, match="exactly one"):
+        run_batch_interpolation(input_dir=INPUT_DIR, output_dir=out_dir, weight_cache_dir=WEIGHT_CACHE_DIR, max_files=1)
+
+    target_grid = build_corner_spacing_grid(sw_lat=42.0, sw_lon=-86.0, dx_km=3.0, nx=5, ny=5)
+    with pytest.raises(ValueError, match="exactly one"):
+        run_batch_interpolation(
+            input_dir=INPUT_DIR, output_dir=out_dir, target_grid_file=MPAS_FILE, target_grid=target_grid,
+            weight_cache_dir=WEIGHT_CACHE_DIR, max_files=1,
+        )
 
 
 def test_batch_output_matches_step1_inmemory_regrid(tmp_path):

@@ -18,7 +18,7 @@ The `pysteps_env` conda environment is required for all of these:
 
 | Section | Used by | Required fields |
 |---|---|---|
-| `interpolation:` | `interpolate_mrms.py` | `raw_mrms_dir`, `interp_mrms_dir`, `target_grid_file` |
+| `interpolation:` | `interpolate_mrms.py` | `raw_mrms_dir`, `interp_mrms_dir`, and exactly one target-grid mode: `target_grid_file`, OR `target_grid_sw_lat`+`target_grid_sw_lon`+`target_grid_dx_km`+`target_grid_nx`+`target_grid_ny` |
 | `observations:` | `identify_track_mrms.py` | `file_format`, `var_name`, `lat_name`, `lon_name`, `boundary_threshold`, `max_value_threshold`, `area_threshold_km2`, `interp_mrms_dir` |
 | `model:` | `identify_track_model.py` | same common fields as `observations:` plus `init_attr`, `lead_attr`, `init_format`, `input_dir` |
 | `matching:` | `run_matching.py` | `max_boundary_disp_km`, `max_centroid_disp_km`, `ti_threshold`, `truth_object_dir`, `forecast_object_dir` |
@@ -68,6 +68,40 @@ would silently interpolate and write out non-reflectivity values as if they
 were dBZ, not raise an error. Set e.g.
 `file_pattern: "**/*MergedReflectivityQCComposite*"` to select only that
 product.
+
+**Target grid — two mutually exclusive modes**, exactly one required:
+
+- **File-backed** (existing behavior): `target_grid_file` + `target_lat_name`/`target_lon_name`
+  point at an existing model grid NetCDF file; its lat/lon coordinate
+  variables become the target grid as-is.
+- **Computed** (southwest corner + regular km spacing + dimensions), for when
+  you don't have (or don't want to depend on) a model grid file — e.g. a
+  fixed analysis domain independent of any particular model run:
+  ```yaml
+  interpolation:
+    raw_mrms_dir: ...
+    interp_mrms_dir: ...
+    target_grid_sw_lat: 35.0     # the (row=0, col=0) grid POINT (a cell center,
+    target_grid_sw_lon: -98.0    # matching how every other grid in this library
+                                  # is represented -- not a cell/domain corner)
+    target_grid_dx_km: 3.0
+    target_grid_dy_km: 3.0       # optional, defaults to target_grid_dx_km (square cells)
+    target_grid_nx: 400
+    target_grid_ny: 400
+    # optional LCC projection overrides -- auto-derived from the grid's own
+    # (estimated) extent if omitted; see build_corner_spacing_grid()'s docstring
+    target_grid_true_lat_1: null
+    target_grid_true_lat_2: null
+    target_grid_cen_lat: null
+    target_grid_cen_lon: null
+  ```
+  Built via `python_obj.regrid.build_corner_spacing_grid()` on an LCC
+  projection (matching the convention already used elsewhere in this
+  library). Giving both modes, or an incomplete set of the corner+spacing+dims
+  fields, raises a clear error at config-load time rather than guessing which
+  one you meant. See `python_obj/configs/config_smoketest_corner_grid.yaml`
+  for a complete, runnable example (same bundled sample MRMS data as
+  `config_smoketest.yaml`, computed target grid instead of a model file).
 
 ## `identify_track_mrms.py`
 

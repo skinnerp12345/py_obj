@@ -60,9 +60,29 @@ _HISTOGRAM_MODEL_PATH_FIELDS = ("input_dir", "output_dir")
 class InterpolationConfig:
     raw_mrms_dir: str
     interp_mrms_dir: str
-    target_grid_file: str
+    # Exactly one of these two target-grid modes must be given (see
+    # _validate_target_grid_mode()): a ready-made model grid file
+    # (target_grid_file, read via load_target_grid()), or a computed grid
+    # built from a southwest corner + regular km spacing + dimensions
+    # (target_grid_sw_lat/lon + target_grid_dx_km/nx/ny, built via
+    # regrid.build_corner_spacing_grid()).
+    target_grid_file: str | None = None
     target_lat_name: str = "latitude"
     target_lon_name: str = "longitude"
+    target_grid_sw_lat: float | None = None
+    target_grid_sw_lon: float | None = None
+    target_grid_dx_km: float | None = None
+    target_grid_dy_km: float | None = None  # defaults to target_grid_dx_km (square cells) if omitted
+    target_grid_nx: int | None = None
+    target_grid_ny: int | None = None
+    # Optional LCC projection overrides for the corner+spacing+dims mode --
+    # auto-derived from the grid's own (estimated) extent if not given, same
+    # escape hatch as obj_core.geometry.build_projected_coords. Unused in
+    # target_grid_file mode.
+    target_grid_true_lat_1: float | None = None
+    target_grid_true_lat_2: float | None = None
+    target_grid_cen_lat: float | None = None
+    target_grid_cen_lon: float | None = None
     n_workers: int = 8
     weight_cache_dir: str = "output/weight_cache"
     date_range: tuple[str, str] | None = None
@@ -320,6 +340,35 @@ def _validate_time_mode(section: dict, section_name: str) -> None:
         )
 
 
+def _validate_target_grid_mode(section: dict, section_name: str) -> None:
+    """Exactly one of the two target-grid modes must be given -- unlike
+    _validate_time_mode's "at least one" check, these two modes genuinely
+    can't coexist (there's no sensible meaning to giving both a grid file
+    AND corner+spacing+dims), so both-given is rejected here too, not just
+    neither-given."""
+    has_file_mode = "target_grid_file" in section
+    corner_spacing_dims_fields = ("target_grid_sw_lat", "target_grid_sw_lon", "target_grid_dx_km", "target_grid_nx", "target_grid_ny")
+    has_corner_mode = all(k in section for k in corner_spacing_dims_fields)
+    has_any_corner_field = any(k in section for k in corner_spacing_dims_fields)
+
+    if has_file_mode and (has_corner_mode or has_any_corner_field):
+        raise ValueError(
+            f"Config section '{section_name}': 'target_grid_file' and the corner+spacing+dims "
+            f"fields ({corner_spacing_dims_fields}) are mutually exclusive -- give exactly one."
+        )
+    if not has_file_mode and has_any_corner_field and not has_corner_mode:
+        missing = [k for k in corner_spacing_dims_fields if k not in section]
+        raise ValueError(
+            f"Config section '{section_name}': corner+spacing+dims mode requires all of "
+            f"{corner_spacing_dims_fields}, missing {missing}."
+        )
+    if not has_file_mode and not has_any_corner_field:
+        raise ValueError(
+            f"Config section '{section_name}' needs either 'target_grid_file', "
+            f"or 'target_grid_sw_lat'+'target_grid_sw_lon'+'target_grid_dx_km'+'target_grid_nx'+'target_grid_ny'."
+        )
+
+
 def _resolve_paths(obj, path_fields: tuple[str, ...], base_dir: str) -> None:
     for field_name in path_fields:
         value = getattr(obj, field_name)
@@ -356,14 +405,25 @@ def load_config(path: str) -> Config:
     interpolation = None
     interp_section = _section("interpolation")
     if interp_section is not None:
-        _require_fields(interp_section, "interpolation", ("raw_mrms_dir", "interp_mrms_dir", "target_grid_file"))
+        _require_fields(interp_section, "interpolation", ("raw_mrms_dir", "interp_mrms_dir"))
+        _validate_target_grid_mode(interp_section, "interpolation")
         date_range = interp_section.get("date_range")
         interpolation = InterpolationConfig(
             raw_mrms_dir=interp_section["raw_mrms_dir"],
             interp_mrms_dir=interp_section["interp_mrms_dir"],
-            target_grid_file=interp_section["target_grid_file"],
+            target_grid_file=interp_section.get("target_grid_file"),
             target_lat_name=interp_section.get("target_lat_name", "latitude"),
             target_lon_name=interp_section.get("target_lon_name", "longitude"),
+            target_grid_sw_lat=interp_section.get("target_grid_sw_lat"),
+            target_grid_sw_lon=interp_section.get("target_grid_sw_lon"),
+            target_grid_dx_km=interp_section.get("target_grid_dx_km"),
+            target_grid_dy_km=interp_section.get("target_grid_dy_km"),
+            target_grid_nx=interp_section.get("target_grid_nx"),
+            target_grid_ny=interp_section.get("target_grid_ny"),
+            target_grid_true_lat_1=interp_section.get("target_grid_true_lat_1"),
+            target_grid_true_lat_2=interp_section.get("target_grid_true_lat_2"),
+            target_grid_cen_lat=interp_section.get("target_grid_cen_lat"),
+            target_grid_cen_lon=interp_section.get("target_grid_cen_lon"),
             n_workers=interp_section.get("n_workers", 8),
             weight_cache_dir=interp_section.get("weight_cache_dir", "output/weight_cache"),
             date_range=tuple(date_range) if date_range is not None else None,

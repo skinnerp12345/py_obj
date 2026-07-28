@@ -1,3 +1,4 @@
+from .grid_builder import build_corner_spacing_grid
 from .grid_spec import CoverageReport, GridSpec, check_coverage, crop_to_bbox, estimate_cell_corners, grid_hash
 from .io_grid import infer_stacked_member_count, load_model_netcdf, load_target_grid, read_init_time_only, read_valid_time_only
 from .io_mrms import (
@@ -22,6 +23,7 @@ from .batch_interpolate import (
 )
 
 __all__ = [
+    "build_corner_spacing_grid",
     "CoverageReport",
     "GridSpec",
     "check_coverage",

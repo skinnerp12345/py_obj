@@ -20,7 +20,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from python_obj.config import load_config, require_section
-from python_obj.regrid import BatchSummary, run_batch_interpolation
+from python_obj.regrid import BatchSummary, build_corner_spacing_grid, run_batch_interpolation
 
 
 def run_one_case(config_path: str) -> BatchSummary:
@@ -28,19 +28,48 @@ def run_one_case(config_path: str) -> BatchSummary:
     interp = require_section(cfg.interpolation, "interpolation", config_path)
 
     print(f"Interpolating MRMS files from '{interp.raw_mrms_dir}' -> '{interp.interp_mrms_dir}'")
-    print(f"Target grid: '{interp.target_grid_file}' (lat='{interp.target_lat_name}', lon='{interp.target_lon_name}')")
     print(f"File pattern: '{interp.file_pattern}'")
     if interp.date_range:
         print(f"Date range: {interp.date_range[0]} - {interp.date_range[1]}")
     if interp.max_files:
         print(f"max_files: {interp.max_files} (smoke-test/dry-run cap)")
 
+    if interp.target_grid_file is not None:
+        print(f"Target grid: '{interp.target_grid_file}' (lat='{interp.target_lat_name}', lon='{interp.target_lon_name}')")
+        return run_batch_interpolation(
+            input_dir=interp.raw_mrms_dir,
+            output_dir=interp.interp_mrms_dir,
+            target_grid_file=interp.target_grid_file,
+            target_lat_name=interp.target_lat_name,
+            target_lon_name=interp.target_lon_name,
+            weight_cache_dir=interp.weight_cache_dir,
+            n_workers=interp.n_workers,
+            date_range=interp.date_range,
+            max_files=interp.max_files,
+            file_pattern=interp.file_pattern,
+        )
+
+    print(
+        f"Target grid: computed, sw_corner=({interp.target_grid_sw_lat}, {interp.target_grid_sw_lon}), "
+        f"dx_km={interp.target_grid_dx_km}, dy_km={interp.target_grid_dy_km or interp.target_grid_dx_km}, "
+        f"nx={interp.target_grid_nx}, ny={interp.target_grid_ny}"
+    )
+    target_grid = build_corner_spacing_grid(
+        sw_lat=interp.target_grid_sw_lat,
+        sw_lon=interp.target_grid_sw_lon,
+        dx_km=interp.target_grid_dx_km,
+        dy_km=interp.target_grid_dy_km,
+        nx=interp.target_grid_nx,
+        ny=interp.target_grid_ny,
+        true_lat_1=interp.target_grid_true_lat_1,
+        true_lat_2=interp.target_grid_true_lat_2,
+        cen_lat=interp.target_grid_cen_lat,
+        cen_lon=interp.target_grid_cen_lon,
+    )
     return run_batch_interpolation(
         input_dir=interp.raw_mrms_dir,
         output_dir=interp.interp_mrms_dir,
-        target_grid_file=interp.target_grid_file,
-        target_lat_name=interp.target_lat_name,
-        target_lon_name=interp.target_lon_name,
+        target_grid=target_grid,
         weight_cache_dir=interp.weight_cache_dir,
         n_workers=interp.n_workers,
         date_range=interp.date_range,

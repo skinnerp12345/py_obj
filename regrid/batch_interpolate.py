@@ -132,17 +132,22 @@ _BBOX_BUFFER_DEG = 0.3
 
 
 def _init_worker(
-    target_grid_file: str,
+    target_grid_file: str | None,
     target_lat_name: str,
     target_lon_name: str,
     weight_cache_dir: str,
     sample_mrms_file: str,
     bbox_buffer_deg: float = 0.3,
+    target_grid: GridSpec | None = None,
 ) -> None:
     global _TARGET_GRID, _SRC_BBOX, _REGRIDDER, _BBOX_BUFFER_DEG
 
     _BBOX_BUFFER_DEG = bbox_buffer_deg
-    _TARGET_GRID = load_target_grid(target_grid_file, target_lat_name, target_lon_name)
+    # target_grid (an already-built GridSpec, e.g. from build_corner_spacing_grid)
+    # takes priority over target_grid_file when both are somehow given -- callers
+    # are expected to pass exactly one (run_batch_interpolation enforces this),
+    # this is just a defensive tie-breaker for _init_worker's own direct callers.
+    _TARGET_GRID = target_grid if target_grid is not None else load_target_grid(target_grid_file, target_lat_name, target_lon_name)
     _SRC_BBOX = (
         float(_TARGET_GRID.lat2d.min()),
         float(_TARGET_GRID.lat2d.max()),
@@ -186,7 +191,7 @@ def _process_one_file(args: tuple[str, str, str, float]) -> BatchFileResult:
 def run_batch_interpolation(
     input_dir: str,
     output_dir: str,
-    target_grid_file: str,
+    target_grid_file: str | None = None,
     target_lat_name: str = "latitude",
     target_lon_name: str = "longitude",
     weight_cache_dir: str = "weight_cache",
@@ -197,9 +202,18 @@ def run_batch_interpolation(
     date_range: tuple[str, str] | None = None,
     max_files: int | None = None,
     file_pattern: str = "**/*.grib2*",
+    target_grid: GridSpec | None = None,
 ) -> BatchSummary:
-    """Interpolate every MRMS file under input_dir onto the grid defined by
-    target_grid_file, writing one NetCDF file per input under output_dir.
+    """Interpolate every MRMS file under input_dir onto a target grid, writing
+    one NetCDF file per input under output_dir.
+
+    Exactly one of target_grid_file (read via load_target_grid()) or
+    target_grid (an already-built GridSpec -- e.g. from
+    build_corner_spacing_grid(), for a user-specified corner+spacing+dims
+    grid with no backing model file) must be given. This is a generic "bring
+    your own GridSpec" escape hatch rather than teaching this function about
+    corner/spacing/dims specifically, so any future grid-construction method
+    plugs in the same way with no signature changes needed here.
 
     date_range, if given, is an inclusive (start_yyyymmdd, end_yyyymmdd) filter
     applied to each discovered file's per-day subdirectory name.
@@ -217,6 +231,12 @@ def run_batch_interpolation(
     write out non-reflectivity values as if they were dBZ. e.g.
     "**/*MergedReflectivityQCComposite*" selects only that product.
     """
+    if (target_grid_file is None) == (target_grid is None):
+        raise ValueError(
+            "run_batch_interpolation: exactly one of target_grid_file or target_grid must be given "
+            f"(got target_grid_file={target_grid_file!r}, target_grid={'<GridSpec>' if target_grid is not None else None})"
+        )
+
     files = discover_mrms_files(input_dir, pattern=file_pattern)
     files = _filter_by_date_range(files, date_range)
     if not files:
@@ -231,7 +251,7 @@ def run_batch_interpolation(
     # starts, so every worker's own call below is a cache hit, not a race.
     _init_worker(
         target_grid_file, target_lat_name, target_lon_name, weight_cache_dir,
-        sample_mrms_file=files[0], bbox_buffer_deg=bbox_buffer_deg,
+        sample_mrms_file=files[0], bbox_buffer_deg=bbox_buffer_deg, target_grid=target_grid,
     )
 
     task_args = [(f, output_dir, varname, fill_value) for f in files]
@@ -239,7 +259,7 @@ def run_batch_interpolation(
     with Pool(
         processes=n_workers,
         initializer=_init_worker,
-        initargs=(target_grid_file, target_lat_name, target_lon_name, weight_cache_dir, files[0], bbox_buffer_deg),
+        initargs=(target_grid_file, target_lat_name, target_lon_name, weight_cache_dir, files[0], bbox_buffer_deg, target_grid),
     ) as pool:
         results = pool.map(_process_one_file, task_args)
 
