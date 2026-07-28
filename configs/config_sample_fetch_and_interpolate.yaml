@@ -1,0 +1,25 @@
+# SAMPLE CONFIG -- demonstrates the full "fetch MRMS for a date, then
+# interpolate to a user-defined grid" chain in one config, using
+# fetch_mrms's date-driven mode (no model files needed at all) together
+# with interpolation's corner+spacing+dims target-grid mode (no model grid
+# file needed either).
+#
+# fetch_mrms: performs a REAL live AWS fetch (internet access required, no
+# credentials needed) -- by design, same precedent as config_sample_wofs.yaml.
+# max_files caps the total to a handful so this stays fast; remove it for a
+# full day.
+
+fetch_mrms:
+  output_dir: output/fetched_mrms_sample
+  dates: ["20230501"]           # or: date_range: ["20230501", "20230503"]
+  max_files: 5
+
+interpolation:
+  raw_mrms_dir: output/fetched_mrms_sample     # same dir fetch_mrms writes to above
+  interp_mrms_dir: output/interp_mrms_sample
+  target_grid_sw_lat: 35.0
+  target_grid_sw_lon: -98.0
+  target_grid_dx_km: 3.0
+  target_grid_nx: 100
+  target_grid_ny: 100
+  n_workers: 2

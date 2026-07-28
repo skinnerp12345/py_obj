@@ -165,13 +165,23 @@ class MatchingConfig:
 
 @dataclass
 class FetchMrmsConfig:
-    model_input_dir: str
+    # Exactly one of these two top-level modes must be given (see
+    # _validate_fetch_mode()):
+    #  (a) model-driven: model_input_dir + file_pattern + one of the two
+    #      time-derivation modes below -- fetch the nearest MRMS match to
+    #      each model file's own valid_time.
+    #  (b) date-driven: 'dates' or 'date_range' (mutually exclusive between
+    #      themselves too, same convention as batch_config.py's cases:
+    #      section) -- fetch EVERY MRMS file found for each given day, no
+    #      model files or valid-time matching involved at all.
     output_dir: str
+    model_input_dir: str | None = None
     file_pattern: str = "*.nc"
     # Exactly one of these two time-derivation modes must be given (see
     # _validate_time_mode()): a ready-made valid_time STRING
     # attribute (e.g. WoFS's valid_time="20260518_230000"), or init+lead
-    # arithmetic (e.g. MPAS's initializationTime+forecastHour).
+    # arithmetic (e.g. MPAS's initializationTime+forecastHour). Only used in
+    # model-driven mode.
     valid_time_attr: str | None = None
     valid_time_format: str | None = None
     init_attr: str | None = None
@@ -179,11 +189,19 @@ class FetchMrmsConfig:
     lead_units: str = "hours"
     init_format: str | None = None
     tolerance_minutes: float = 5.0
+    # Date-driven mode: 'dates' (explicit list of YYYYMMDD strings) or
+    # 'date_range' (inclusive [start, end] YYYYMMDD pair, expanded to daily
+    # strings) -- unused in model-driven mode.
+    dates: list[str] | None = None
+    date_range: tuple[str, str] | None = None
     s3_bucket: str = "noaa-mrms-pds"
     mrms_product: str = "MergedReflectivityQCComposite_00.50"
     mirror_subdirs: bool = True
     skip_existing: bool = True
-    max_files: int | None = None
+    max_files: int | None = None  # model-driven: caps model files processed;
+                                   # date-driven: caps TOTAL files across every
+                                   # requested date combined (after listing all
+                                   # of them), not a per-day cap
 
 
 @dataclass
@@ -369,6 +387,34 @@ def _validate_target_grid_mode(section: dict, section_name: str) -> None:
         )
 
 
+def _validate_fetch_mode(section: dict, section_name: str) -> None:
+    """Exactly one of fetch_mrms's two top-level modes must be given:
+    model-driven (model_input_dir + a time-derivation mode) or date-driven
+    ('dates' or 'date_range', mutually exclusive between themselves too --
+    same convention as batch_config.py's cases: section)."""
+    has_model_mode = "model_input_dir" in section
+    has_dates = "dates" in section
+    has_date_range = "date_range" in section
+    has_any_date_mode = has_dates or has_date_range
+
+    if has_model_mode and has_any_date_mode:
+        raise ValueError(
+            f"Config section '{section_name}': 'model_input_dir' (model-driven mode) and "
+            f"'dates'/'date_range' (date-driven mode) are mutually exclusive -- give exactly one."
+        )
+    if not has_model_mode and not has_any_date_mode:
+        raise ValueError(
+            f"Config section '{section_name}' needs either 'model_input_dir' (model-driven mode), "
+            f"or 'dates'/'date_range' (date-driven mode)."
+        )
+    if has_dates and has_date_range:
+        raise ValueError(
+            f"Config section '{section_name}': 'dates' and 'date_range' are mutually exclusive -- give exactly one."
+        )
+    if has_model_mode:
+        _validate_time_mode(section, section_name)
+
+
 def _resolve_paths(obj, path_fields: tuple[str, ...], base_dir: str) -> None:
     for field_name in path_fields:
         value = getattr(obj, field_name)
@@ -503,11 +549,12 @@ def load_config(path: str) -> Config:
     fetch_mrms = None
     fetch_mrms_section = _section("fetch_mrms")
     if fetch_mrms_section is not None:
-        _require_fields(fetch_mrms_section, "fetch_mrms", ("model_input_dir", "output_dir"))
-        _validate_time_mode(fetch_mrms_section, "fetch_mrms")
+        _require_fields(fetch_mrms_section, "fetch_mrms", ("output_dir",))
+        _validate_fetch_mode(fetch_mrms_section, "fetch_mrms")
+        date_range = fetch_mrms_section.get("date_range")
         fetch_mrms = FetchMrmsConfig(
-            model_input_dir=fetch_mrms_section["model_input_dir"],
             output_dir=fetch_mrms_section["output_dir"],
+            model_input_dir=fetch_mrms_section.get("model_input_dir"),
             file_pattern=fetch_mrms_section.get("file_pattern", "*.nc"),
             valid_time_attr=fetch_mrms_section.get("valid_time_attr"),
             valid_time_format=fetch_mrms_section.get("valid_time_format"),
@@ -516,6 +563,8 @@ def load_config(path: str) -> Config:
             lead_units=fetch_mrms_section.get("lead_units", "hours"),
             init_format=fetch_mrms_section.get("init_format"),
             tolerance_minutes=fetch_mrms_section.get("tolerance_minutes", 5.0),
+            dates=list(fetch_mrms_section["dates"]) if "dates" in fetch_mrms_section else None,
+            date_range=tuple(date_range) if date_range is not None else None,
             s3_bucket=fetch_mrms_section.get("s3_bucket", "noaa-mrms-pds"),
             mrms_product=fetch_mrms_section.get("mrms_product", "MergedReflectivityQCComposite_00.50"),
             mirror_subdirs=fetch_mrms_section.get("mirror_subdirs", True),

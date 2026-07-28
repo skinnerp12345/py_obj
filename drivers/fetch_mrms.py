@@ -1,18 +1,26 @@
-"""Standalone script: fetch MRMS observations matching a directory of model
-files' valid times from the public noaa-mrms-pds AWS S3 archive.
+"""Standalone script: fetch MRMS observations from the public noaa-mrms-pds
+AWS S3 archive, in either of two independent modes.
 
-For each model file (e.g. WoFS, which has no local matching MRMS data),
-derives its valid_time (via python_obj.regrid.read_valid_time_only's
-flexible mechanism -- a ready-made valid_time string attribute, or
-init+lead arithmetic, depending on the model), lists that day's MRMS files
-in the public archive (one HTTPS request per distinct day, cached), finds
-the nearest available MRMS timestamp within a tolerance, and downloads it.
+Model-driven mode (the original mode): for each file in a directory of model
+output (e.g. WoFS, which has no local matching MRMS data), derives its
+valid_time (via python_obj.regrid.read_valid_time_only's flexible mechanism
+-- a ready-made valid_time string attribute, or init+lead arithmetic,
+depending on the model), lists that day's MRMS files in the public archive
+(one HTTPS request per distinct day, cached), finds the nearest available
+MRMS timestamp within a tolerance, and downloads it.
 
-Fetched files are written in the exact directory/filename convention
+Date-driven mode: given 'dates' (an explicit list) or 'date_range' (an
+inclusive [start, end] pair, expanded to daily strings -- same convention as
+batch_config.py's cases: section), fetches EVERY MRMS file found for each
+requested day, no model files or valid-time matching involved at all.
+
+Both modes reuse the same listing (_list_mrms_day)/download (_download_file)
+machinery and write fetched files in the exact directory/filename convention
 already used by test_mrms/ and already consumed unmodified by
 discover_mrms_files()/interpolate_mrms.py -- <output_dir>/<YYYYMMDD>/
-<original S3 filename>, no renaming -- so the fetched output can be used
-directly as an 'interpolation.raw_mrms_dir' with zero downstream changes.
+<original S3 filename>, no renaming -- so fetched output can be used
+directly as an 'interpolation.raw_mrms_dir' with zero downstream changes,
+regardless of which mode produced it.
 
 The bucket is public; no AWS credentials or SDK needed, just plain HTTPS
 (the `requests` library). Configured entirely via the shared
@@ -29,7 +37,7 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -37,21 +45,23 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
+from python_obj.config import FetchMrmsConfig, load_config, require_section
 from python_obj.regrid import read_valid_time_only
 from python_obj.time_utils import nearest_within_tolerance
 
 _S3_NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
+_DATE_FORMAT = "%Y%m%d"  # matches batch_config.py's _DEFAULT_DATE_FORMAT
 
 
 @dataclass
 class FetchFileResult:
-    model_input_path: str
+    model_input_path: str | None  # None in date-driven mode (see source_date instead)
     model_valid_time: datetime | None
     mrms_key: str | None
     mrms_local_path: str | None
     status: str  # "downloaded" | "already_exists" | "no_match_within_tolerance" | "failed"
     error: str | None = None
+    source_date: str | None = None  # set (YYYYMMDD) in date-driven mode; None in model-driven mode
 
 
 @dataclass
@@ -66,8 +76,25 @@ class FetchSummary:
         lines = [f"FetchSummary: {self.n_total} total -- " + ", ".join(f"{v} {k}" for k, v in counts.items())]
         for r in self.results:
             if r.status not in ("downloaded", "already_exists"):
-                lines.append(f"  {r.status.upper()}: {r.model_input_path}: {r.error or '(no MRMS time in tolerance)'}")
+                label = r.model_input_path if r.model_input_path is not None else f"date={r.source_date}"
+                lines.append(f"  {r.status.upper()}: {label}: {r.error or '(no MRMS time in tolerance)'}")
         return "\n".join(lines)
+
+
+def _expand_date_range(start_str: str, end_str: str, date_format: str = _DATE_FORMAT) -> list[str]:
+    """Inclusive [start, end] -> daily list of date strings -- identical
+    convention to batch_config.py's own date_range expansion (same format,
+    same timedelta(days=1) step, same end-before-start check)."""
+    start = datetime.strptime(start_str, date_format)
+    end = datetime.strptime(end_str, date_format)
+    if end < start:
+        raise ValueError(f"date_range: end ({end_str}) is before start ({start_str})")
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current.strftime(date_format))
+        current += timedelta(days=1)
+    return dates
 
 
 def _list_mrms_day(bucket: str, product: str, day: str) -> list[tuple[datetime, str, int]]:
@@ -119,10 +146,7 @@ def _download_file(bucket: str, key: str, local_path: str) -> None:
     os.rename(part_path, local_path)
 
 
-def run_one_case(config_path: str) -> FetchSummary:
-    cfg = load_config(config_path)
-    fm = require_section(cfg.fetch_mrms, "fetch_mrms", config_path)
-
+def _run_model_driven(fm: FetchMrmsConfig) -> FetchSummary:
     model_files = sorted(glob.glob(os.path.join(fm.model_input_dir, fm.file_pattern)))
     if not model_files:
         raise FileNotFoundError(
@@ -197,7 +221,68 @@ def run_one_case(config_path: str) -> FetchSummary:
                 status="failed", error=f"{type(exc).__name__}: {exc}",
             ))
 
-    summary = FetchSummary(n_total=len(results), results=results)
+    return FetchSummary(n_total=len(results), results=results)
+
+
+def _run_date_driven(fm: FetchMrmsConfig) -> FetchSummary:
+    dates = list(fm.dates) if fm.dates is not None else _expand_date_range(*fm.date_range)
+    print(f"Fetching every MRMS file for {len(dates)} date(s): {dates[0]}"
+          + (f" - {dates[-1]}" if len(dates) > 1 else ""))
+
+    results: list[FetchFileResult] = []
+    # (date, key, size) across every requested day, listed up front so
+    # max_files can cap the TOTAL across all dates combined, not per-day.
+    all_entries: list[tuple[str, str, int]] = []
+    for day in dates:
+        print(f"Listing MRMS archive for {day} ...")
+        try:
+            entries = _list_mrms_day(fm.s3_bucket, fm.mrms_product, day)
+        except Exception as exc:  # noqa: BLE001 -- one day's failure never aborts the run
+            results.append(FetchFileResult(
+                model_input_path=None, model_valid_time=None, mrms_key=None, mrms_local_path=None,
+                status="failed", error=f"listing {day} failed: {type(exc).__name__}: {exc}", source_date=day,
+            ))
+            continue
+        all_entries.extend((day, key, size) for _, key, size in entries)
+
+    if fm.max_files is not None:
+        all_entries = all_entries[:fm.max_files]
+
+    for day, key, size in all_entries:
+        out_subdir = os.path.join(fm.output_dir, day) if fm.mirror_subdirs else fm.output_dir
+        local_path = os.path.join(out_subdir, os.path.basename(key))
+
+        if fm.skip_existing and os.path.exists(local_path) and os.path.getsize(local_path) == size:
+            results.append(FetchFileResult(
+                model_input_path=None, model_valid_time=None, mrms_key=key, mrms_local_path=local_path,
+                status="already_exists", source_date=day,
+            ))
+            continue
+
+        try:
+            _download_file(fm.s3_bucket, key, local_path)
+            results.append(FetchFileResult(
+                model_input_path=None, model_valid_time=None, mrms_key=key, mrms_local_path=local_path,
+                status="downloaded", source_date=day,
+            ))
+        except Exception as exc:  # noqa: BLE001
+            results.append(FetchFileResult(
+                model_input_path=None, model_valid_time=None, mrms_key=key, mrms_local_path=local_path,
+                status="failed", error=f"{type(exc).__name__}: {exc}", source_date=day,
+            ))
+
+    return FetchSummary(n_total=len(results), results=results)
+
+
+def run_one_case(config_path: str) -> FetchSummary:
+    cfg = load_config(config_path)
+    fm = require_section(cfg.fetch_mrms, "fetch_mrms", config_path)
+
+    if fm.model_input_dir is not None:
+        summary = _run_model_driven(fm)
+    else:
+        summary = _run_date_driven(fm)
+
     print(summary)
     return summary
 

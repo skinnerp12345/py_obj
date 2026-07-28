@@ -23,7 +23,7 @@ The `pysteps_env` conda environment is required for all of these:
 | `model:` | `identify_track_model.py` | same common fields as `observations:` plus `init_attr`, `lead_attr`, `init_format`, `input_dir` |
 | `matching:` | `run_matching.py` | `max_boundary_disp_km`, `max_centroid_disp_km`, `ti_threshold`, `truth_object_dir`, `forecast_object_dir` |
 | `linear_classification:` | `identify_track_mrms.py`, `identify_track_model.py` | all four threshold fields |
-| `fetch_mrms:` | `fetch_mrms.py` | `model_input_dir`, `output_dir`, and either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format` |
+| `fetch_mrms:` | `fetch_mrms.py` | `output_dir`, and exactly one top-level mode: model-driven (`model_input_dir` + either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format`) OR date-driven (`dates` or `date_range`) |
 | `histogram_observations:` | `build_histogram_mrms.py`, `aggregate_histograms.py` | `interp_mrms_dir` |
 | `histogram_model:` | `build_histogram_model.py`, `aggregate_histograms.py` | `input_dir`, and either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format` |
 
@@ -191,30 +191,57 @@ dropped. Writes one match file per distinct forecast valid_time under
 
 ## `fetch_mrms.py`
 
-Fetches MRMS observations matching a directory of model files' valid times
-from the public `noaa-mrms-pds` AWS S3 archive (no credentials needed, plain
-HTTPS) — for a model (e.g. WoFS) that has no local matching MRMS data yet.
-Requires `fetch_mrms:`.
+Fetches MRMS observations from the public `noaa-mrms-pds` AWS S3 archive (no
+credentials needed, plain HTTPS), in either of two independent, mutually
+exclusive modes. Requires `fetch_mrms:`.
 
 ```bash
 /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/fetch_mrms.py [path/to/config.yaml]
 ```
 
-For each model file, derives its valid_time (via
-`python_obj.regrid.read_valid_time_only`'s flexible mechanism — either a
+**Model-driven mode** — for a model (e.g. WoFS) that has no local matching
+MRMS data yet: for each file under `model_input_dir`, derives its valid_time
+(via `python_obj.regrid.read_valid_time_only`'s flexible mechanism — either a
 ready-made `valid_time_attr`+`valid_time_format` string, e.g. WoFS's
 `valid_time="20260518_230000"`, or `init_attr`+`lead_attr`+`init_format`
 arithmetic, e.g. MPAS's), lists that day's MRMS archive (one HTTPS request
 per distinct day, cached across files), and downloads the nearest MRMS file
 within `tolerance_minutes`. A model time with no MRMS file within tolerance
 is reported as `no_match_within_tolerance`, never silently dropped.
-`skip_existing: true` (default) skips re-downloading a file whose local size
-already matches the archive's — safe to re-run.
 
-Fetched files land at `<output_dir>/<YYYYMMDD>/<original filename>`, the
-same layout `test_mrms/` and `discover_mrms_files()`/`interpolate_mrms.py`
-already use — point `interpolation.raw_mrms_dir` at the fetched
-`output_dir` to interpolate them with zero further changes.
+```yaml
+fetch_mrms:
+  model_input_dir: /path/to/model/output
+  file_pattern: "*.nc"
+  output_dir: /path/to/raw_mrms
+  valid_time_attr: valid_time
+  valid_time_format: "%Y%m%d_%H%M%S"
+  tolerance_minutes: 2.5
+```
+
+**Date-driven mode** — fetches *every* MRMS file found for one or more whole
+calendar days, no model files or valid-time matching involved at all: give
+`dates` (an explicit `[YYYYMMDD, ...]` list) or `date_range` (an inclusive
+`[start, end]` pair, expanded to daily strings — same convention as
+`batch_config.py`'s `cases:` section; mutually exclusive with `dates`).
+
+```yaml
+fetch_mrms:
+  output_dir: /path/to/raw_mrms
+  date_range: ["20230501", "20230503"]   # or: dates: ["20230501", "20230503"]
+```
+
+In date-driven mode, `max_files` (if given) caps the **total** files across
+every requested date combined (listed up front, then capped), not a per-day
+limit.
+
+Both modes share the same download machinery: `skip_existing: true`
+(default) skips re-downloading a file whose local size already matches the
+archive's — safe to re-run either mode. Fetched files land at
+`<output_dir>/<YYYYMMDD>/<original filename>` either way — the same layout
+`test_mrms/` and `discover_mrms_files()`/`interpolate_mrms.py` already use —
+point `interpolation.raw_mrms_dir` at the fetched `output_dir` to interpolate
+them with zero further changes.
 
 ## `build_histogram_mrms.py`
 

@@ -489,3 +489,70 @@ def test_target_grid_partial_corner_fields_raises(tmp_path):
 
     with pytest.raises(ValueError, match="requires all of"):
         load_config(str(p))
+
+
+# --- Check 8: fetch_mrms date-driven mode validation ------------------------
+
+def test_fetch_mrms_dates_mode_parses(tmp_path):
+    cfg_dict = {"fetch_mrms": {"output_dir": "out", "dates": ["20230501", "20230502"]}}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    cfg = load_config(str(p))
+    print(f"\n[config-check8] {cfg.fetch_mrms}")
+    assert cfg.fetch_mrms.model_input_dir is None
+    assert cfg.fetch_mrms.dates == ["20230501", "20230502"]
+    assert cfg.fetch_mrms.date_range is None
+
+
+def test_fetch_mrms_date_range_mode_parses(tmp_path):
+    cfg_dict = {"fetch_mrms": {"output_dir": "out", "date_range": ["20230501", "20230505"]}}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    cfg = load_config(str(p))
+    assert cfg.fetch_mrms.dates is None
+    assert cfg.fetch_mrms.date_range == ("20230501", "20230505")
+
+
+def test_fetch_mrms_model_and_date_mode_both_given_raises(tmp_path):
+    cfg_dict = {"fetch_mrms": {
+        "output_dir": "out", "model_input_dir": "models", "dates": ["20230501"],
+    }}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_config(str(p))
+
+
+def test_fetch_mrms_neither_mode_given_raises(tmp_path):
+    cfg_dict = {"fetch_mrms": {"output_dir": "out"}}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="needs either"):
+        load_config(str(p))
+
+
+def test_fetch_mrms_dates_and_date_range_both_given_raises(tmp_path):
+    cfg_dict = {"fetch_mrms": {
+        "output_dir": "out", "dates": ["20230501"], "date_range": ["20230501", "20230502"],
+    }}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        load_config(str(p))
+
+
+def test_fetch_mrms_model_mode_still_requires_time_mode(tmp_path):
+    """Regression: model-driven mode must still enforce the existing
+    valid_time_attr/init_attr time-mode rule, unaffected by the new
+    date-driven mode's validation."""
+    cfg_dict = {"fetch_mrms": {"output_dir": "out", "model_input_dir": "models"}}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="valid_time_attr"):
+        load_config(str(p))
