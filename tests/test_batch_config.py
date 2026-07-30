@@ -148,6 +148,110 @@ def test_relative_template_paths_resolve_before_date_substitution(tmp_path):
     assert cfg.histogram_model.input_dir == str(case_dir)
 
 
+# --- Check 3b: init_times / init_time_range -- second, independent expansion
+# axis for archives nesting multiple forecast initializations under one date
+# (e.g. WoFS/NowcastNet-style YYYYMMDD/HHMM/ directories) ------------------
+
+def _write_wofs_style_template(tmp_path, cases_yaml: str) -> str:
+    template_path = str(tmp_path / "template.yaml")
+    with open(template_path, "w") as f:
+        f.write(cases_yaml)
+        f.write(f"""
+histogram_model:
+  input_dir: {tmp_path}/cases/{{date}}/{{init_time}}
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  init_format: "%Y%m%d%H"
+  output_dir: output/hist_model/{{date}}_{{init_time}}
+""")
+    return template_path
+
+
+def test_explicit_init_times_list_expands_cross_product(tmp_path):
+    for init_time in ("0000", "1900"):
+        case_dir = tmp_path / "cases" / "20230501" / init_time
+        case_dir.mkdir(parents=True)
+        _write_model_file(str(case_dir / "f001.nc"))
+
+    template_path = _write_wofs_style_template(
+        tmp_path, 'cases:\n  dates: ["20230501"]\n  init_times: ["0000", "1900"]\n',
+    )
+    expanded = expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+
+    print(f"\n[batch-config-check3b] case_paths={[os.path.basename(p) for p in expanded.case_paths]}")
+    assert len(expanded.case_paths) == 2
+    assert expanded.skipped_no_directory == []
+    labels = {os.path.basename(p) for p in expanded.case_paths}
+    assert labels == {"config_20230501_0000.yaml", "config_20230501_1900.yaml"}
+
+    cfg = load_config(str(tmp_path / "materialized" / "config_20230501_1900.yaml"))
+    assert cfg.histogram_model.input_dir == str(tmp_path / "cases" / "20230501" / "1900")
+    assert cfg.histogram_model.output_dir.endswith(os.path.join("hist_model", "20230501_1900"))
+
+
+def test_init_time_range_generates_contiguous_hourly_times(tmp_path):
+    for init_time in ("0000", "0100", "0200", "0300"):
+        case_dir = tmp_path / "cases" / "20230501" / init_time
+        case_dir.mkdir(parents=True)
+        _write_model_file(str(case_dir / "f001.nc"))
+
+    template_path = _write_wofs_style_template(
+        tmp_path,
+        'cases:\n  dates: ["20230501"]\n  init_time_range: ["0000", "0300"]\n  init_time_step_minutes: 60\n',
+    )
+    expanded = expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+    assert len(expanded.case_paths) == 4
+    assert expanded.skipped_no_directory == []
+
+
+def test_init_times_and_init_time_range_mutually_exclusive(tmp_path):
+    template_path = _write_wofs_style_template(
+        tmp_path,
+        'cases:\n  dates: ["20230501"]\n  init_times: ["0000"]\n  init_time_range: ["0000", "0300"]\n'
+        '  init_time_step_minutes: 60\n',
+    )
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+
+
+def test_init_time_range_requires_step_minutes(tmp_path):
+    template_path = _write_wofs_style_template(
+        tmp_path, 'cases:\n  dates: ["20230501"]\n  init_time_range: ["0000", "0300"]\n',
+    )
+    with pytest.raises(ValueError, match="init_time_step_minutes"):
+        expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+
+
+def test_missing_init_time_directory_is_reported_with_combined_label(tmp_path):
+    # 0000: real case; 0100: never initialized (missing directory entirely)
+    real_dir = tmp_path / "cases" / "20230501" / "0000"
+    real_dir.mkdir(parents=True)
+    _write_model_file(str(real_dir / "f001.nc"))
+
+    template_path = _write_wofs_style_template(
+        tmp_path, 'cases:\n  dates: ["20230501"]\n  init_times: ["0000", "0100"]\n',
+    )
+    expanded = expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+
+    assert len(expanded.case_paths) == 1
+    assert expanded.skipped_no_directory == ["20230501_0100"]
+
+
+def test_omitting_init_times_preserves_date_only_labels(tmp_path):
+    # No init_times/init_time_range at all -- case labels must stay exactly
+    # "{date}" (not "{date}_None" or similar), matching pre-existing behavior.
+    case_dir = tmp_path / "cases" / "20230501" / "mem1"
+    case_dir.mkdir(parents=True)
+    _write_model_file(str(case_dir / "f001.nc"))
+
+    template_path = _write_template(tmp_path, 'cases:\n  dates: ["20230501"]\n')
+    expanded = expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
+    assert os.path.basename(expanded.case_paths[0]) == "config_20230501.yaml"
+
+
 # --- Check 4: real end-to-end against the bundled sample_data + run_cases_in_parallel
 
 def test_real_end_to_end_with_run_cases_in_parallel(tmp_path):

@@ -22,16 +22,43 @@ completely ordinary config.
                                                       # format AND date_range's
                                                       # own string format
 
+      # Optional SECOND, independent expansion axis -- for archives that nest
+      # multiple forecast initializations under one date directory (common in
+      # short-term NWP, e.g. WoFS/NowcastNet-style YYYYMMDD/HHMM/ layouts).
+      # Omit entirely to keep today's date-only, single-axis behavior exactly.
+      init_times: ["0000", "0100", "1900"]           # explicit, non-contiguous
+      # -- OR --
+      init_time_range: ["0000", "2300"]               # inclusive, contiguous
+      init_time_step_minutes: 60                      # required with init_time_range
+      init_time_format: "%H%M"                        # default; must match both
+                                                      # the {init_time} placeholders'
+                                                      # format AND init_time_range's
+                                                      # own string format
+
+When `init_times`/`init_time_range` is given, expand_batch_config() expands
+the full cross-product of dates x init_times -- one materialized config per
+(date, init_time) pair, with both "{date}" and "{init_time}" substituted
+(e.g. `input_dir: /archive/wofs/{date}/{init_time}`). This is deliberately a
+second, independent axis rather than folded into date_range/dates itself --
+an archive's init times are a property of what's on disk under one date, not
+another calendar-like range in their own right (WoFS's real init-time
+subdirectories are frequently non-contiguous within a day, e.g. only
+00-03Z + 19-23Z -- see the missing-directory reporting below, which handles
+this for real, not just in theory).
+
 Two independent "this case can't be run" outcomes are distinguished, not
-collapsed into one: a date whose case-defining directory doesn't exist at all
+collapsed into one: a case whose case-defining directory doesn't exist at all
 (e.g. the forecast was never initialized) vs. one whose directory exists but
 is empty (e.g. the forecast crashed after creating its output directory but
 before writing anything). Both are reported, never silently dropped, and
-neither one stops the remaining dates from being processed.
+neither one stops the remaining cases from being processed. Each reported
+entry is labeled "{date}" (date-only expansion) or "{date}_{init_time}"
+(cross-product expansion), matching the materialized output filename.
 """
 
 import os
 from dataclasses import dataclass, fields, replace
+from datetime import datetime, timedelta
 
 import yaml
 
@@ -52,19 +79,48 @@ _CASE_DIR_FIELDS_BY_SECTION = {
 }
 
 _DEFAULT_DATE_FORMAT = "%Y%m%d"
+_DEFAULT_INIT_TIME_FORMAT = "%H%M"
 
 
 @dataclass
 class ExpandedBatchConfig:
     case_paths: list  # list[str] -- materialized config paths, ready to run
-    skipped_no_directory: list  # list[str] -- dates whose case directory doesn't exist at all
-    skipped_no_files: list  # list[str] -- dates whose case directory exists but contains no files
+    skipped_no_directory: list  # list[str] -- case labels ("{date}" or "{date}_{init_time}") whose case directory doesn't exist at all
+    skipped_no_files: list  # list[str] -- case labels whose case directory exists but contains no files
 
 
-def _parse_cases_section(template_path: str) -> tuple[list, str]:
+def _parse_date_range(start_str: str, end_str: str, date_format: str, template_path: str) -> list:
+    start = datetime.strptime(start_str, date_format)
+    end = datetime.strptime(end_str, date_format)
+    if end < start:
+        raise ValueError(f"'{template_path}' 'cases.date_range': end ({end_str}) is before start ({start_str})")
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current.strftime(date_format))
+        current += timedelta(days=1)
+    return dates
+
+
+def _parse_init_time_range(start_str: str, end_str: str, step_minutes: float, init_time_format: str, template_path: str) -> list:
+    start = datetime.strptime(start_str, init_time_format)
+    end = datetime.strptime(end_str, init_time_format)
+    if end < start:
+        raise ValueError(f"'{template_path}' 'cases.init_time_range': end ({end_str}) is before start ({start_str})")
+    times = []
+    current = start
+    while current <= end:
+        times.append(current.strftime(init_time_format))
+        current += timedelta(minutes=step_minutes)
+    return times
+
+
+def _parse_cases_section(template_path: str) -> tuple[list, list | None]:
     """Reads just the 'cases:' section by hand (load_config() has no concept
     of it -- it's meta-information about how to expand the template, not
-    itself a pipeline-stage recipe)."""
+    itself a pipeline-stage recipe). Returns (dates, init_times) -- init_times
+    is None when the template uses no init-time axis at all (single-axis,
+    date-only expansion, today's original behavior unchanged)."""
     with open(template_path) as f:
         raw = yaml.safe_load(f) or {}
 
@@ -84,36 +140,53 @@ def _parse_cases_section(template_path: str) -> tuple[list, str]:
         )
 
     date_format = cases.get("date_format", _DEFAULT_DATE_FORMAT)
-
     if has_dates:
-        return list(cases["dates"]), date_format
+        dates = list(cases["dates"])
+    else:
+        dates = _parse_date_range(cases["date_range"][0], cases["date_range"][1], date_format, template_path)
 
-    from datetime import datetime, timedelta
+    has_init_times = "init_times" in cases
+    has_init_range = "init_time_range" in cases
+    if has_init_times and has_init_range:
+        raise ValueError(
+            f"'{template_path}' 'cases:' section: 'init_times' and 'init_time_range' are "
+            f"mutually exclusive -- give at most one (both are optional)."
+        )
 
-    start_str, end_str = cases["date_range"]
-    start = datetime.strptime(start_str, date_format)
-    end = datetime.strptime(end_str, date_format)
-    if end < start:
-        raise ValueError(f"'{template_path}' 'cases.date_range': end ({end_str}) is before start ({start_str})")
+    if has_init_times:
+        init_times = list(cases["init_times"])
+    elif has_init_range:
+        if "init_time_step_minutes" not in cases:
+            raise ValueError(
+                f"'{template_path}' 'cases.init_time_range' requires 'init_time_step_minutes'."
+            )
+        init_time_format = cases.get("init_time_format", _DEFAULT_INIT_TIME_FORMAT)
+        init_times = _parse_init_time_range(
+            cases["init_time_range"][0], cases["init_time_range"][1],
+            cases["init_time_step_minutes"], init_time_format, template_path,
+        )
+    else:
+        init_times = None
 
-    dates = []
-    current = start
-    while current <= end:
-        dates.append(current.strftime(date_format))
-        current += timedelta(days=1)
-    return dates, date_format
+    return dates, init_times
 
 
-def _substitute_date(section_instance, date_str: str):
-    """Returns a copy of this dataclass instance with '{date}' replaced by
-    date_str in every string field -- not just the ones this module happens
-    to know are path-shaped, since a case-varying value (e.g. output_dir)
-    isn't limited to the small _CASE_DIR_FIELDS_BY_SECTION list above."""
+def _substitute_placeholders(section_instance, date_str: str, init_time_str: str | None):
+    """Returns a copy of this dataclass instance with '{date}' (and, when
+    given, '{init_time}') replaced in every string field -- not just the
+    ones this module happens to know are path-shaped, since a case-varying
+    value (e.g. output_dir) isn't limited to the small
+    _CASE_DIR_FIELDS_BY_SECTION list above."""
     changes = {}
     for f in fields(section_instance):
         value = getattr(section_instance, f.name)
-        if isinstance(value, str) and "{date}" in value:
-            changes[f.name] = value.replace("{date}", date_str)
+        if not isinstance(value, str):
+            continue
+        new_value = value.replace("{date}", date_str)
+        if init_time_str is not None:
+            new_value = new_value.replace("{init_time}", init_time_str)
+        if new_value != value:
+            changes[f.name] = new_value
     return replace(section_instance, **changes) if changes else section_instance
 
 
@@ -141,10 +214,12 @@ def _to_yaml_safe(value):
 
 def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchConfig:
     """Expands one template config (see module docstring) into one
-    materialized config file per case date, skipping (and reporting, never
-    silently dropping) dates whose case directory is missing or empty.
+    materialized config file per case -- one per date, or one per (date,
+    init_time) pair when the template's 'cases:' section also gives
+    'init_times'/'init_time_range' -- skipping (and reporting, never silently
+    dropping) any case whose directory is missing or empty.
     """
-    dates, _ = _parse_cases_section(template_path)
+    dates, init_times = _parse_cases_section(template_path)
     cfg: Config = load_config(template_path)  # fully parsed + path-resolved (relative to template_path's own dir)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -153,11 +228,17 @@ def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchCon
     skipped_no_directory = []
     skipped_no_files = []
 
-    for date_str in dates:
+    case_keys = [(d, None) for d in dates] if init_times is None else [(d, t) for d in dates for t in init_times]
+
+    for date_str, init_time_str in case_keys:
+        case_label = date_str if init_time_str is None else f"{date_str}_{init_time_str}"
+
         substituted_sections = {}
         for f in fields(Config):
             section = getattr(cfg, f.name)
-            substituted_sections[f.name] = None if section is None else _substitute_date(section, date_str)
+            substituted_sections[f.name] = (
+                None if section is None else _substitute_placeholders(section, date_str, init_time_str)
+            )
 
         missing_dir = False
         empty_dir = False
@@ -172,26 +253,26 @@ def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchCon
                 empty_dir = True
 
         if missing_dir:
-            skipped_no_directory.append(date_str)
+            skipped_no_directory.append(case_label)
             continue
         if empty_dir:
-            print(f"WARNING: expand_batch_config: date '{date_str}' has an existing case directory with no files -- skipping")
-            skipped_no_files.append(date_str)
+            print(f"WARNING: expand_batch_config: case '{case_label}' has an existing case directory with no files -- skipping")
+            skipped_no_files.append(case_label)
             continue
 
         out_yaml = {
             name: _to_yaml_safe({f.name: getattr(section, f.name) for f in fields(section)})
             for name, section in substituted_sections.items() if section is not None
         }
-        out_path = os.path.join(output_dir, f"config_{date_str}.yaml")
+        out_path = os.path.join(output_dir, f"config_{case_label}.yaml")
         with open(out_path, "w") as fh:
             yaml.safe_dump(out_yaml, fh, sort_keys=False)
         case_paths.append(out_path)
 
     if skipped_no_directory:
-        print(f"expand_batch_config: skipped {len(skipped_no_directory)} date(s), case directory not found: {skipped_no_directory}")
+        print(f"expand_batch_config: skipped {len(skipped_no_directory)} case(s), case directory not found: {skipped_no_directory}")
     if skipped_no_files:
-        print(f"expand_batch_config: skipped {len(skipped_no_files)} date(s), case directory exists but has no files: {skipped_no_files}")
+        print(f"expand_batch_config: skipped {len(skipped_no_files)} case(s), case directory exists but has no files: {skipped_no_files}")
 
     return ExpandedBatchConfig(
         case_paths=case_paths, skipped_no_directory=skipped_no_directory, skipped_no_files=skipped_no_files,

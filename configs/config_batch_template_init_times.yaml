@@ -1,0 +1,76 @@
+# REFERENCE TEMPLATE -- demonstrates expand_batch_config()'s init_times /
+# init_time_range expansion axis: archives that nest multiple forecast
+# initializations under one date directory (YYYYMMDD/HHMM/, common in
+# short-term NWP -- WoFS, NowcastNet, etc.), not just one case per date.
+#
+# Unlike config_batch_template.yaml (a fictitious HPC path, not runnable
+# as-is), this one is REAL and RUNNABLE against this repo's own bundled
+# ../../nowcastnet_netcdf/ directory (real NowcastNet deep-learning nowcast
+# output, WoFS-style directory layout: 20260423/0000/, 20260423/0100/, ...).
+# Not part of python_obj/'s own self-contained upload -- a "bring your own
+# larger dataset" reference, same convention as config.yaml/config_ensemble.yaml.
+#
+# The "cases:" section is read only by expand_batch_config() itself --
+# load_config()/run_one_case() never see it, it's purely metadata about how
+# to expand this one template into many materialized configs.
+
+cases:
+  dates: ["20260423"]
+  date_format: "%Y%m%d"
+
+  # Second, independent expansion axis -- every "{init_time}" placeholder
+  # below gets substituted alongside "{date}" for each (date, init_time)
+  # combination. init_time_range is the contiguous generator (like
+  # date_range, but for time-of-day HHMM strings + a step in minutes rather
+  # than whole days); an explicit "init_times: [...]" list also works for
+  # non-contiguous cadences.
+  init_time_range: ["0000", "2300"]
+  init_time_step_minutes: 60
+  init_time_format: "%H%M"   # default; shown explicitly here for clarity
+
+  # This real archive only has init times 0000-0300 and 1900-2300 on any
+  # given date (a real overnight-only NowcastNet run cadence, not a gap in
+  # the data) -- the 15 hourly slots in between (0400-1800) are reported via
+  # ExpandedBatchConfig.skipped_no_directory, not silently dropped or an
+  # error. Confirmed via a real run: 9/24 hourly slots exist for this date,
+  # producing exactly 9 materialized configs and 15 skipped entries.
+
+model:
+  input_dir: ../../nowcastnet_netcdf/{date}/{init_time}
+  file_format: netcdf
+  file_pattern: "*.nc"
+  var_name: comp_dz          # NowcastNet's composite reflectivity field (NE=1, auto-squeezed)
+  lat_name: xlat
+  lon_name: xlon
+  valid_time_attr: valid_time         # ready-made "YYYYMMDD_HHMMSS" string, same convention as WoFS
+  valid_time_format: "%Y%m%d_%H%M%S"
+  init_time_attr: init_time           # same format -- needed for file_grouping: init_snapshot below
+  boundary_threshold: 39.8            # placeholder, same as elsewhere in this repo -- not yet
+  max_value_threshold: 45.6           # NowcastNet-specific percentile-matched values
+  area_threshold_km2: 108.0
+  mask: none                          # NowcastNet's real domain here is small/storm-scale, like WoFS
+  track: false
+  file_grouping: init_snapshot        # one object file per real forecast init_time (18 lead times each)
+  object_output_dir: output/obj_model_nowcastnet/{date}_{init_time}
+
+histogram_model:
+  input_dir: ../../nowcastnet_netcdf/{date}/{init_time}
+  file_pattern: "*.nc"
+  var_name: comp_dz
+  lat_name: xlat
+  lon_name: xlon
+  valid_time_attr: valid_time
+  valid_time_format: "%Y%m%d_%H%M%S"
+  init_time_attr: init_time
+  output_dir: output/hist_model_nowcastnet/{date}_{init_time}
+  # bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero omitted --
+  # library defaults (-20 to 80 dBZ by 0.2, edge_trim=7, no clipping) fit fine.
+  # One histogram file per init_time (not merged across the day's cycles) --
+  # if a combined day-level distribution is wanted, sum the resulting files
+  # afterward with python_obj.histogram.aggregate.sum_histograms().
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
