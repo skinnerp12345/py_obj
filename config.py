@@ -108,6 +108,8 @@ class ObservationConfig:
     track_distance_km: float = 0.0
     file_grouping: str = "single"
     object_output_dir: str = "output/obj_mrms"
+    file_pattern: str = "**/*.nc"  # restricts discovery when interp_mrms_dir contains non-data
+                                    # files alongside real ones (e.g. "**/wofs_MRMS_RAD_*.nc")
 
 
 @dataclass
@@ -223,6 +225,12 @@ class HistogramObservationConfig:
     bin_width: float = 0.2
     edge_trim: int = 7
     clip_negative_to_zero: bool = False
+    file_pattern: str = "**/*.nc"  # restricts discovery when interp_mrms_dir contains non-data
+                                    # files alongside real ones (e.g. "**/wofs_MRMS_RAD_*.nc") --
+                                    # a real production archive can have a handful of non-data
+                                    # files that sort before the real ones, and _discover_by_day()
+                                    # has no per-file error isolation, so even one such file
+                                    # aborts an entire day's histogram
 
 
 @dataclass
@@ -484,7 +492,7 @@ def load_config(path: str) -> Config:
         observations = _build_source_config(
             ObservationConfig, obs_section, "observations",
             extra_required=("interp_mrms_dir",),
-            extra_optional_defaults={"object_output_dir": "output/obj_mrms"},
+            extra_optional_defaults={"object_output_dir": "output/obj_mrms", "file_pattern": "**/*.nc"},
         )
         _resolve_paths(observations, _OBSERVATIONS_PATH_FIELDS, base_dir)
 
@@ -590,6 +598,7 @@ def load_config(path: str) -> Config:
             bin_width=hist_obs_section.get("bin_width", 0.2),
             edge_trim=hist_obs_section.get("edge_trim", 7),
             clip_negative_to_zero=hist_obs_section.get("clip_negative_to_zero", False),
+            file_pattern=hist_obs_section.get("file_pattern", "**/*.nc"),
         )
         _resolve_paths(histogram_observations, _HISTOGRAM_OBSERVATIONS_PATH_FIELDS, base_dir)
 

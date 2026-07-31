@@ -34,10 +34,10 @@ from python_obj.obj_core import conus_mask, conus_mask_east
 from python_obj.regrid import load_mrms_netcdf
 
 
-def _discover_by_day(interp_mrms_dir: str) -> dict[str, list[str]]:
-    files = sorted(glob.glob(os.path.join(interp_mrms_dir, "**", "*.nc"), recursive=True))
+def _discover_by_day(interp_mrms_dir: str, file_pattern: str = "**/*.nc") -> dict[str, list[str]]:
+    files = sorted(glob.glob(os.path.join(interp_mrms_dir, file_pattern), recursive=True))
     if not files:
-        raise FileNotFoundError(f"No interpolated MRMS files found under '{interp_mrms_dir}'")
+        raise FileNotFoundError(f"No interpolated MRMS files matching '{file_pattern}' found under '{interp_mrms_dir}'")
     by_day: dict[str, list[str]] = defaultdict(list)
     for f in files:
         day = os.path.basename(os.path.dirname(f))
@@ -50,7 +50,7 @@ def run_one_case(config_path: str) -> list[str]:
     hist_cfg: HistogramObservationConfig = require_section(cfg.histogram_observations, "histogram_observations", config_path)
 
     bins = default_bin_edges(hist_cfg.bin_min, hist_cfg.bin_max, hist_cfg.bin_width)
-    by_day = _discover_by_day(hist_cfg.interp_mrms_dir)
+    by_day = _discover_by_day(hist_cfg.interp_mrms_dir, file_pattern=hist_cfg.file_pattern)
     n_total = sum(len(v) for v in by_day.values())
     print(
         f"Found {n_total} interpolated MRMS files across {len(by_day)} day(s) under '{hist_cfg.interp_mrms_dir}'"

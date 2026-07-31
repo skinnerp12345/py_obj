@@ -346,3 +346,88 @@ def test_real_mask_excludes_cells_entirely_not_as_fake_clear_air(tmp_path):
           f"excluded={excluded_frac*100:.1f}% (expect ~51%, matching the grid's own known conus_east fraction)")
     assert masked_total < unmasked_total, "masking must strictly reduce the total count -- cells must be excluded, not zeroed in"
     assert 0.45 < excluded_frac < 0.57
+
+
+# --- Check 8: file_pattern excludes non-data files mixed into interp_mrms_dir
+
+# Real risk this guards against: a production MRMS archive directory can
+# contain a handful of non-data files (e.g. index/metadata files) alongside
+# the real interpolated-MRMS files. _discover_by_day() globbed "**/*.nc"
+# unconditionally, with no per-file error isolation across the read loop --
+# a single non-conforming file sorting before the real ones aborted the
+# entire day's histogram (real production failure: 24/24 days failed with
+# KeyError: 'lat', traced to exactly this cause).
+
+def _mixed_mrms_dir(tmp_path) -> str:
+    cfg = load_config(os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml"))
+    real_files = sorted(glob.glob(os.path.join(cfg.histogram_observations.interp_mrms_dir, "**", "*.nc"), recursive=True))
+    assert real_files, "expected real bundled interpolated-MRMS files"
+
+    mixed_dir = tmp_path / "mixed_mrms" / "20230501"
+    mixed_dir.mkdir(parents=True)
+    import shutil
+    for f in real_files:
+        shutil.copy(f, mixed_dir / os.path.basename(f))
+
+    # A non-data file that sorts alphabetically before "interp_mrms_..." --
+    # a real netCDF file (opens fine) but with none of the expected
+    # variables, mirroring the real production files that caused this.
+    decoy = mixed_dir / "00_index.nc"
+    with netCDF4.Dataset(str(decoy), "w"):
+        pass
+    return str(tmp_path / "mixed_mrms")
+
+
+def test_discover_by_day_default_pattern_sweeps_up_non_data_file(tmp_path):
+    from python_obj.drivers.build_histogram_mrms import _discover_by_day
+    mixed_dir = _mixed_mrms_dir(tmp_path)
+    by_day = _discover_by_day(mixed_dir)  # default pattern: "**/*.nc"
+    n_files = sum(len(v) for v in by_day.values())
+    print(f"\n[hist-check8a] default pattern discovered {n_files} files (real + 1 decoy)")
+    assert any(os.path.basename(f) == "00_index.nc" for files in by_day.values() for f in files), \
+        "default pattern should sweep up the non-data decoy file -- demonstrates the real risk"
+
+
+def test_run_one_case_default_pattern_fails_on_mixed_directory(tmp_path):
+    """Reproduces the real reported failure directly: a decoy file sorting
+    first triggers KeyError: 'lat' before any real file is ever read."""
+    from python_obj.drivers.build_histogram_mrms import run_one_case
+    mixed_dir = _mixed_mrms_dir(tmp_path)
+
+    cfg_path = str(tmp_path / "config_mixed.yaml")
+    with open(cfg_path, "w") as f:
+        f.write(
+            "histogram_observations:\n"
+            f"  interp_mrms_dir: {mixed_dir}\n"
+            "  var_name: refl_consv\n"
+            "  lat_name: lat\n"
+            "  lon_name: lon\n"
+            f"  output_dir: {tmp_path / 'hist_out'}\n"
+        )
+
+    with pytest.raises(KeyError):
+        run_one_case(cfg_path)
+    print("\n[hist-check8b] confirmed: unfiltered discovery reproduces the real KeyError")
+
+
+def test_run_one_case_file_pattern_excludes_non_data_file(tmp_path):
+    from python_obj.drivers.build_histogram_mrms import run_one_case
+    mixed_dir = _mixed_mrms_dir(tmp_path)
+
+    cfg_path = str(tmp_path / "config_filtered.yaml")
+    with open(cfg_path, "w") as f:
+        f.write(
+            "histogram_observations:\n"
+            f"  interp_mrms_dir: {mixed_dir}\n"
+            "  var_name: refl_consv\n"
+            "  lat_name: lat\n"
+            "  lon_name: lon\n"
+            f"  output_dir: {tmp_path / 'hist_out_filtered'}\n"
+            '  file_pattern: "**/interp_mrms_*.nc"\n'
+        )
+
+    out_paths = run_one_case(cfg_path)
+    contents = read_histogram_file(out_paths[0])
+    print(f"\n[hist-check8c] file_pattern excluded the decoy -- {len(contents.slices)} real slices, "
+          f"{sum(int(s.hist.sum()) for s in contents.slices)} total counts")
+    assert len(contents.slices) > 0

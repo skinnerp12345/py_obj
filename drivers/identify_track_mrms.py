@@ -36,10 +36,11 @@ def run_one_case(config_path: str) -> list[str]:
     obs = require_section(cfg.observations, "observations", config_path)
     linear = require_section(cfg.linear_classification, "linear_classification", config_path)
 
-    files = sorted(glob.glob(os.path.join(obs.interp_mrms_dir, "**", "*.nc"), recursive=True))
+    files = sorted(glob.glob(os.path.join(obs.interp_mrms_dir, obs.file_pattern), recursive=True))
     if not files:
         raise FileNotFoundError(
-            f"No interpolated MRMS files found under '{obs.interp_mrms_dir}' -- run interpolate_mrms.py first."
+            f"No interpolated MRMS files matching '{obs.file_pattern}' found under "
+            f"'{obs.interp_mrms_dir}' -- run interpolate_mrms.py first."
         )
     print(f"Found {len(files)} interpolated MRMS files under '{obs.interp_mrms_dir}'")
 

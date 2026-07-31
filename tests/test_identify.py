@@ -574,3 +574,61 @@ def test_init_snapshot_real_data_matches_full_mode(tmp_path):
     assert len(c_full.objects) == len(c_init.objects)
     assert sorted(o.id for o in c_full.objects) == sorted(o.id for o in c_init.objects)
     assert c_init.init_time == next(iter(init_times))
+
+
+# --- Check 9: identify_track_mrms.py's file_pattern excludes non-data files
+# in interp_mrms_dir -- same real production failure class as
+# build_histogram_mrms.py's own file_pattern fix (test_histogram.py's
+# "Check 8"), for the sibling driver that shares the identical unfiltered
+# glob against the same interp_mrms_dir source.
+
+def test_identify_track_mrms_file_pattern_excludes_non_data_file(tmp_path):
+    import shutil
+    from python_obj.drivers.identify_track_mrms import run_one_case
+
+    real_files = sorted(glob.glob(os.path.join(INTERP_MRMS_DIR, "*.nc")))
+    assert real_files, "expected real bundled interpolated-MRMS files"
+
+    mixed_dir = tmp_path / "mixed_mrms"
+    mixed_dir.mkdir()
+    for f in real_files:
+        shutil.copy(f, mixed_dir / os.path.basename(f))
+    decoy = mixed_dir / "00_index.nc"
+    with netCDF4.Dataset(str(decoy), "w"):
+        pass  # real netCDF file, opens fine, has none of the expected variables
+
+    def _write_config(cfg_path: str, file_pattern_line: str) -> None:
+        with open(cfg_path, "w") as f:
+            f.write(
+                "observations:\n"
+                "  file_format: netcdf\n"
+                "  var_name: refl_consv\n"
+                "  lat_name: lat\n"
+                "  lon_name: lon\n"
+                "  boundary_threshold: 40.0\n"
+                "  max_value_threshold: 45.0\n"
+                "  area_threshold_km2: 108.0\n"
+                f"  interp_mrms_dir: {mixed_dir}\n"
+                f"  object_output_dir: {tmp_path / 'obj_out'}\n"
+                f"{file_pattern_line}"
+                "linear_classification:\n"
+                "  linear_eccentricity_threshold: 0.8\n"
+                "  linear_length_threshold_km: 200.0\n"
+                "  mixed_eccentricity_threshold: 0.75\n"
+                "  mixed_length_threshold_km: 100.0\n"
+            )
+
+    # default pattern ("**/*.nc", no file_pattern given) sweeps up the decoy
+    # and fails, matching the real reported KeyError -- confirms the risk is
+    # real for this driver too, not just the histogram one.
+    default_cfg_path = str(tmp_path / "config_default.yaml")
+    _write_config(default_cfg_path, "")
+    with pytest.raises(KeyError):
+        run_one_case(default_cfg_path)
+
+    # a product-specific pattern excludes the decoy and succeeds
+    filtered_cfg_path = str(tmp_path / "config_filtered.yaml")
+    _write_config(filtered_cfg_path, '  file_pattern: "**/interp_mrms_*.nc"\n')
+    out_paths = run_one_case(filtered_cfg_path)
+    print(f"\n[id-check9] file_pattern excluded the decoy -- {len(out_paths)} object file(s) written")
+    assert len(out_paths) == len(real_files)
