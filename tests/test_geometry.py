@@ -103,6 +103,50 @@ def test_load_mrms_netcdf_missing_valid_time_attr_raises(tmp_path):
           "and none is supplied (no silent guess from filename)")
 
 
+def test_load_mrms_netcdf_falls_back_to_variable_level_valid_time(tmp_path):
+    """Real-world case: MET-tool-produced MRMS files (e.g. wofs_MRMS_RAD_*.nc)
+    carry valid_time as an attribute on the data variable itself, not as a
+    global attribute -- confirmed via direct inspection of a real such file."""
+    import netCDF4
+    var_level_file = str(tmp_path / "var_level_valid_time.nc")
+    with netCDF4.Dataset(var_level_file, "w") as ds:
+        ds.createDimension("y", 2)
+        ds.createDimension("x", 2)
+        ds.createVariable("lat", "f8", ("y", "x"))[:, :] = 30.0
+        ds.createVariable("lon", "f8", ("y", "x"))[:, :] = -90.0
+        refl = ds.createVariable("refl_consv", "f8", ("y", "x"))
+        refl[:, :] = 20.0
+        refl.valid_time = "20260501_020000"  # MET-tool convention, variable-level, not global
+        # deliberately no global valid_time attribute
+
+    field = load_mrms_netcdf(var_level_file)
+    assert field.valid_time == datetime(2026, 5, 1, 2, 0, 0)
+    print(f"\n[geom-check2c] load_mrms_netcdf falls back to the data variable's own "
+          f"valid_time attribute when no global one exists: {field.valid_time}")
+
+
+def test_load_mrms_netcdf_prefers_global_valid_time_over_variable_level(tmp_path):
+    """When both are present, the global attribute (this library's own
+    interpolated-output convention) wins -- confirms the fallback is only a
+    fallback, not a silent override of existing, already-correct behavior."""
+    import netCDF4
+    both_file = str(tmp_path / "both_valid_time.nc")
+    with netCDF4.Dataset(both_file, "w") as ds:
+        ds.createDimension("y", 2)
+        ds.createDimension("x", 2)
+        ds.createVariable("lat", "f8", ("y", "x"))[:, :] = 30.0
+        ds.createVariable("lon", "f8", ("y", "x"))[:, :] = -90.0
+        refl = ds.createVariable("refl_consv", "f8", ("y", "x"))
+        refl[:, :] = 20.0
+        refl.valid_time = "20260501_020000"       # variable-level -- should be ignored
+        ds.valid_time = "2023-05-01T01:00:41"      # global -- should win
+
+    field = load_mrms_netcdf(both_file)
+    assert field.valid_time == datetime(2023, 5, 1, 1, 0, 41)
+    print(f"\n[geom-check2d] load_mrms_netcdf prefers the global valid_time attribute "
+          f"when both are present: {field.valid_time}")
+
+
 # --- Check 3: load_model_netcdf against test_mpas/ --------------------------
 
 def test_load_model_netcdf_f001_and_f003():

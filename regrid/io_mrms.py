@@ -153,9 +153,14 @@ def load_mrms_netcdf(
     `lon`, `refl_consv`).
 
     valid_time: if not given, read from the file's own `valid_time` global
-    attribute (written by `write_interpolated_mrms_netcdf`). If that attribute
-    is absent, raises rather than guessing from the filename -- callers of a
-    file produced by some other means must supply valid_time explicitly.
+    attribute (written by `write_interpolated_mrms_netcdf`, ISO-8601 format).
+    If that global attribute is absent, falls back to a `valid_time` attribute
+    on the `varname` data variable itself, format `YYYYMMDD_HHMMSS` -- a real,
+    confirmed convention from MET-tool-produced MRMS files (e.g.
+    `wofs_MRMS_RAD_*.nc`), which carry `valid_time`/`init_time` per-variable
+    rather than as a global attribute. If neither is present, raises rather
+    than guessing from the filename -- callers of a file produced by some
+    other means must supply valid_time explicitly.
     """
     import netCDF4
 
@@ -170,10 +175,13 @@ def load_mrms_netcdf(
         if valid_time is None:
             if hasattr(ds, "valid_time"):
                 valid_time = datetime.fromisoformat(ds.valid_time)
+            elif hasattr(data_var, "valid_time"):
+                valid_time = datetime.strptime(data_var.valid_time, "%Y%m%d_%H%M%S")
             else:
                 raise ValueError(
-                    f"'{filepath}' has no 'valid_time' global attribute; pass valid_time "
-                    "explicitly rather than guessing it from the filename."
+                    f"'{filepath}' has no 'valid_time' global attribute or '{varname}' "
+                    "variable attribute; pass valid_time explicitly rather than guessing "
+                    "it from the filename."
                 )
 
     return MRMSField(lat2d=lat2d, lon2d=lon2d, data=data, valid_time=valid_time, missing_value=missing_value)
