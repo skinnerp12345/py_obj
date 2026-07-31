@@ -1,0 +1,39 @@
+# SAMPLE CONFIG -- object identification + tracking against real MET-tool-
+# produced MRMS observations (wofs_mrms_test/, downloaded example hour: 12
+# files, 5-min cadence, 2026-05-01 02:00Z-02:55Z, WoFS-style YYYYMMDD/HHMM-
+# ish directory naming where the directory date can trail the filename date
+# by a day -- see CLAUDE.md for the full "0905-0900Z" convention).
+#
+# Not part of python_obj/'s own self-contained bundle -- like
+# config_sample_wofs.yaml/config_sample_mpas.yaml, this points at real,
+# externally-downloaded data (../../wofs_mrms_test/, a sibling of
+# python_obj/ at the repo root), a "bring your own data" reference.
+#
+# file_pattern is REQUIRED here, not optional: this real archive convention
+# mixes a few non-data files into each date directory that sort before the
+# real wofs_MRMS_RAD_*.nc product files -- without file_pattern restricting
+# discovery to the real product naming, identify_track_mrms.py raises
+# KeyError: 'lat' on the first non-conforming file it reads (see CLAUDE.md's
+# "file_pattern for MRMS observation discovery" entry for the full diagnosis).
+
+observations:
+  file_format: netcdf
+  var_name: refl_consv                        # this file's real dBZ variable (NOT refl_cress, the other one present)
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: ../../wofs_mrms_test
+  file_pattern: "**/wofs_MRMS_RAD_*.nc"       # excludes the real non-data files mixed into this archive
+  object_output_dir: output/obj_wofs_mrms_sample
+  boundary_threshold: 45.0                     # placeholder, same as the WoFS/MPAS samples elsewhere in
+  max_value_threshold: 50.2                    # this repo -- not yet MRMS-specific percentile-matched values
+  area_threshold_km2: 108.0
+  mask: none                                   # small, storm-scale WoFS-style domain -- CONUS masking doesn't apply
+  track: true                                  # MRMS is truth data -- tracked, matching config_sample_wofs.yaml's convention
+  track_distance_km: 0.0
+  file_grouping: single                        # one object file per output time (12 files, 5-min cadence)
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
