@@ -556,3 +556,37 @@ def test_fetch_mrms_model_mode_still_requires_time_mode(tmp_path):
 
     with pytest.raises(ValueError, match="valid_time_attr"):
         load_config(str(p))
+
+
+# --- valid_time_var: third, independent time-mode for model:/histogram_model: ---
+
+def test_model_valid_time_var_alone_satisfies_time_mode(tmp_path):
+    """A caller using only valid_time_var (e.g. the real WoFSCast CF-time-
+    coordinate case) shouldn't be forced to also supply an unused
+    valid_time_attr or init_attr/lead_attr/init_format just to pass
+    validation."""
+    cfg_dict = {"model": {
+        "file_format": "netcdf", "var_name": "wofscast_comp_dz",
+        "lat_name": "xlat", "lon_name": "xlon",
+        "boundary_threshold": 40.0, "max_value_threshold": 45.0, "area_threshold_km2": 108.0,
+        "input_dir": "models", "valid_time_var": "datetime",
+    }}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    cfg = load_config(str(p))
+    assert cfg.model.valid_time_var == "datetime"
+    assert cfg.model.valid_time_attr is None
+
+
+def test_model_no_time_mode_still_raises(tmp_path):
+    cfg_dict = {"model": {
+        "file_format": "netcdf", "var_name": "x", "lat_name": "lat", "lon_name": "lon",
+        "boundary_threshold": 40.0, "max_value_threshold": 45.0, "area_threshold_km2": 108.0,
+        "input_dir": "models",
+    }}
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.dump(cfg_dict))
+
+    with pytest.raises(ValueError, match="needs one of"):
+        load_config(str(p))

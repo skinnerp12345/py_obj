@@ -181,6 +181,66 @@ def test_load_model_netcdf_missing_attrs_raises(tmp_path):
     print("\n[geom-check3b] load_model_netcdf correctly raises when init/lead attrs are absent")
 
 
+# --- Check 3c: valid_time_var -- CF-convention time coordinate override -----
+#
+# Real bug this guards against: a real WoFSCast output file's global
+# init_time/valid_time attributes were both identical, stale copies of the
+# WoFS input file it was derived from (confirmed via direct inspection) --
+# the real valid_time only existed in a proper CF-convention time coordinate
+# variable (units="<unit> since <reference>" + a numeric offset), cross-
+# confirmed against the file's own embedded filename timestamp.
+
+def test_load_model_netcdf_valid_time_var_decodes_cf_time_coordinate(tmp_path):
+    import netCDF4
+    cf_file = str(tmp_path / "cf_time.nc")
+    with netCDF4.Dataset(cf_file, "w") as ds:
+        ds.createDimension("y", 2)
+        ds.createDimension("x", 2)
+        ds.createVariable("latitude", "f8", ("y", "x"))[:, :] = 30.0
+        ds.createVariable("longitude", "f8", ("y", "x"))[:, :] = -90.0
+        ds.createVariable("refl10cm_max", "f8", ("y", "x"))[:, :] = 20.0
+        t = ds.createVariable("datetime", "i8", ())
+        t.units = "hours since 2023-01-01T00:00:00"
+        t.calendar = "proleptic_gregorian"
+        t[...] = 5  # -> 2023-01-01T05:00:00, a non-trivial, non-zero offset
+        # deliberately WRONG global attrs, mirroring the real WoFSCast bug --
+        # valid_time_var must win over these, not just work in their absence
+        ds.init_time = "20230101_000000"
+        ds.valid_time = "20230101_000000"
+
+    field = load_model_netcdf(
+        cf_file, varname="refl10cm_max", lat_name="latitude", lon_name="longitude",
+        valid_time_var="datetime",
+    )
+    assert field.valid_time == datetime(2023, 1, 1, 5, 0, 0)
+    print(f"\n[geom-check3c] valid_time_var correctly decoded {field.valid_time} from the CF time "
+          f"coordinate, overriding the deliberately-wrong global attrs (would have given 2023-01-01 00:00)")
+
+
+def test_load_model_netcdf_valid_time_var_real_wofscast_file():
+    """Real end-to-end confirmation against the actual reported-erroneous
+    WoFSCast file, if present locally (external data, not bundled)."""
+    real_file = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "sfe_poster", "wofs_wofscast_WEB_62_20260506_2220_0310.nc",
+    )
+    if not os.path.exists(real_file):
+        pytest.skip(f"real external WoFSCast sample not present at {real_file}")
+
+    buggy = load_model_netcdf(
+        real_file, varname="wofscast_comp_dz", lat_name="xlat", lon_name="xlon",
+        valid_time_attr="valid_time", valid_time_format="%Y%m%d_%H%M%S", extra_dim_index=0,
+    )
+    fixed = load_model_netcdf(
+        real_file, varname="wofscast_comp_dz", lat_name="xlat", lon_name="xlon",
+        valid_time_var="datetime", extra_dim_index=0,
+    )
+    print(f"\n[geom-check3d] real WoFSCast file: buggy (global attr) valid_time={buggy.valid_time}, "
+          f"fixed (CF var) valid_time={fixed.valid_time}")
+    assert buggy.valid_time == datetime(2026, 5, 6, 22, 0, 0)  # the confirmed-wrong value
+    assert fixed.valid_time == datetime(2026, 5, 7, 3, 10, 0)  # matches the filename's embedded "0310"
+
+
 # --- Check 4: pixel_area_km2 sanity check -----------------------------------
 
 def test_pixel_area_km2_matches_independent_estimate():

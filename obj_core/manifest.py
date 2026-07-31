@@ -46,6 +46,7 @@ def build_model_manifest(
     init_format: str | None = None,
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
+    valid_time_var: str | None = None,
     member_subdir_pattern: str = "*",
     init_time_attr: str = "init_time",
 ) -> tuple[list[SeriesEntry], Callable[..., object]]:
@@ -77,7 +78,12 @@ def build_model_manifest(
 
     valid_time comes from load_model_netcdf()'s (or, for stacked_members,
     read_valid_time_only()'s) own flexible derivation -- never parsed from
-    the filename.
+    the filename. valid_time_var is an opt-in override for a source whose
+    global valid_time attribute is known-unreliable (e.g. a real confirmed
+    WoFSCast bug where it was a stale copy of init_time): when given, it
+    takes precedence over valid_time_attr, decoding a CF-convention time
+    coordinate variable instead (see regrid.io_grid._resolve_valid_time()'s
+    full precedence order).
 
     init_time (the forecast's own initialization time, distinct from
     valid_time) is read once per file via read_init_time_only() and attached
@@ -91,7 +97,7 @@ def build_model_manifest(
         fp,
         varname=var_name, lat_name=lat_name, lon_name=lon_name,
         init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
-        valid_time_attr=valid_time_attr, valid_time_format=valid_time_format,
+        valid_time_attr=valid_time_attr, valid_time_format=valid_time_format, valid_time_var=valid_time_var,
         extra_dim_index=extra_dim_index,
     )
 
@@ -125,7 +131,7 @@ def build_model_manifest(
             valid_time = read_valid_time_only(
                 f,
                 init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
-                valid_time_attr=valid_time_attr, valid_time_format=valid_time_format,
+                valid_time_attr=valid_time_attr, valid_time_format=valid_time_format, valid_time_var=valid_time_var,
             )
             init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
             n_members = infer_stacked_member_count(f, var_name)

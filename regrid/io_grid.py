@@ -138,6 +138,41 @@ def load_target_grid(example_file: str, lat_name: str, lon_name: str) -> GridSpe
     return GridSpec(lat2d=lat2d, lon2d=lon2d)
 
 
+def _decode_cf_time_var(ds: netCDF4.Dataset, filepath: str, valid_time_var: str) -> datetime:
+    """Decodes a standard CF-convention time coordinate variable (`units`
+    attribute of the form "<unit> since <reference-datetime>", e.g.
+    "days since 2026-05-07T03:10:00", combined with the variable's own
+    numeric offset) into a plain datetime.datetime.
+
+    Real, confirmed use case: a WoFSCast output file whose global `init_time`/
+    `valid_time` attributes were both stale copies of the WoFS input file it
+    was derived from (identical to each other -- a real, confirmed bug, not
+    hypothetical), while its `datetime` coordinate variable carried the
+    correct valid time via this standard convention, independently cross-
+    confirmed by the filename's own embedded timestamp. Uses netCDF4's own
+    num2date() (backed by cftime) rather than hand-parsing the units string,
+    since CF time encoding has real edge cases (varying calendars, unit
+    strings, fractional offsets) already handled correctly there.
+    """
+    if valid_time_var not in ds.variables:
+        raise ValueError(f"'{filepath}' has no '{valid_time_var}' variable (needed for CF time decoding).")
+    var = ds.variables[valid_time_var]
+    if not hasattr(var, "units"):
+        raise ValueError(
+            f"'{filepath}' variable '{valid_time_var}' has no 'units' attribute -- "
+            "cannot decode as a CF time coordinate."
+        )
+    calendar = getattr(var, "calendar", "standard")
+    decoded = netCDF4.num2date(var[...], var.units, calendar=calendar, only_use_cftime_datetimes=False)
+    if not isinstance(decoded, datetime):
+        raise ValueError(
+            f"'{filepath}' variable '{valid_time_var}' uses calendar '{calendar}', which doesn't "
+            f"convert to a plain datetime.datetime (got {type(decoded).__name__}) -- only "
+            "standard/gregorian/proleptic_gregorian calendars are supported here."
+        )
+    return decoded
+
+
 def _resolve_valid_time(
     ds: netCDF4.Dataset,
     filepath: str,
@@ -149,6 +184,7 @@ def _resolve_valid_time(
     valid_time_attr: str | None,
     valid_time_format: str | None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None,
+    valid_time_var: str | None = None,
 ) -> datetime:
     """Shared valid_time derivation for load_model_netcdf()/read_valid_time_only().
 
@@ -158,23 +194,33 @@ def _resolve_valid_time(
 
       1. explicit `valid_time` -- caller already knows it, nothing to derive.
       2. `valid_time_fn(ds)` -- caller-supplied escape hatch for any
-         convention that fits neither of the two built-in modes below.
+         convention that fits neither of the built-in modes below.
          Exceptions raised inside it propagate uncaught (it's the caller's
          own logic; not this function's job to guess what went wrong).
-      3. `valid_time_attr`+`valid_time_format` -- a ready-made datetime
+      3. `valid_time_var` -- a CF-convention time coordinate variable (see
+         _decode_cf_time_var()). Deliberately placed above the global-
+         attribute string mode below: a caller who explicitly sets this
+         knows their file's global valid_time attribute is unreliable (the
+         real, confirmed WoFSCast case this was added for) and wants the
+         override to win outright, without needing to also unset
+         valid_time_attr for other sources sharing the same config shape.
+      4. `valid_time_attr`+`valid_time_format` -- a ready-made datetime
          STRING global attribute (e.g. WoFS's `valid_time="20260518_230000"`,
          format "%Y%m%d_%H%M%S") -- no init+lead arithmetic needed at all.
-      4. `init_attr`+`lead_attr`+`lead_units`+`init_format` -- the original
+      5. `init_attr`+`lead_attr`+`lead_units`+`init_format` -- the original
          MPAS-style convention: init time + a lead-time NUMBER needing
          `timedelta(**{lead_units: lead_value})` arithmetic. Stays the
          default fallback so existing MPAS callers are unaffected by the
-         two newer modes above.
+         newer modes above.
     """
     if valid_time is not None:
         return valid_time
 
     if valid_time_fn is not None:
         return valid_time_fn(ds)
+
+    if valid_time_var is not None:
+        return _decode_cf_time_var(ds, filepath, valid_time_var)
 
     if valid_time_attr is not None or valid_time_format is not None:
         if valid_time_attr is None or valid_time_format is None:
@@ -212,6 +258,7 @@ def load_model_netcdf(
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None = None,
+    valid_time_var: str | None = None,
     extra_dim_index: int | None = None,
     extra_dim_selector_fn: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> GriddedField:
@@ -219,9 +266,12 @@ def load_model_netcdf(
     coordinates (validated against test_mpas/*.nc's `refl10cm_max`).
 
     valid_time derivation (see _resolve_valid_time() for the full precedence
-    order): if not given explicitly, tries valid_time_fn, then
-    valid_time_attr/valid_time_format (a ready-made datetime string, e.g.
-    WoFS's `valid_time="20260518_230000"`), then falls back to the original
+    order): if not given explicitly, tries valid_time_fn, then valid_time_var
+    (a CF-convention time coordinate variable -- for a source whose global
+    valid_time attribute is known-unreliable, e.g. a real confirmed WoFSCast
+    bug where it was a stale copy of init_time), then valid_time_attr/
+    valid_time_format (a ready-made datetime string, e.g. WoFS's
+    `valid_time="20260518_230000"`), then falls back to the original
     init_attr+lead_attr arithmetic (e.g. MPAS test files carry
     `initializationTime="2023050100"` and `forecastHour="12"`). Not parsed
     from the filename in any mode -- more robust, and generalizes to any
@@ -260,7 +310,7 @@ def load_model_netcdf(
 
         valid_time = _resolve_valid_time(
             ds, filepath, valid_time, init_attr, lead_attr, lead_units, init_format,
-            valid_time_attr, valid_time_format, valid_time_fn,
+            valid_time_attr, valid_time_format, valid_time_fn, valid_time_var,
         )
 
     return GriddedField(lat2d=lat2d, lon2d=lon2d, data=data, valid_time=valid_time, missing_value=missing_value)
@@ -275,6 +325,7 @@ def read_valid_time_only(
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None = None,
+    valid_time_var: str | None = None,
 ) -> datetime:
     """Read just a model file's valid_time, without loading its lat/lon grid
     or data variable -- for callers (e.g. a fetch/discovery script) that only
@@ -287,7 +338,7 @@ def read_valid_time_only(
     with netCDF4.Dataset(filepath, "r") as ds:
         return _resolve_valid_time(
             ds, filepath, None, init_attr, lead_attr, lead_units, init_format,
-            valid_time_attr, valid_time_format, valid_time_fn,
+            valid_time_attr, valid_time_format, valid_time_fn, valid_time_var,
         )
 
 

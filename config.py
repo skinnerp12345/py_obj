@@ -131,6 +131,9 @@ class ModelConfig:
     init_format: str | None = None
     valid_time_attr: str | None = None
     valid_time_format: str | None = None
+    valid_time_var: str | None = None  # CF-convention time coordinate variable override -- for a source
+                                        # whose global valid_time attribute is known-unreliable (real
+                                        # confirmed case: WoFSCast), takes precedence over valid_time_attr
     mask: str = "none"
     track: bool = False
     track_distance_km: float = 0.0
@@ -253,6 +256,9 @@ class HistogramModelConfig:
     init_format: str | None = None
     valid_time_attr: str | None = None
     valid_time_format: str | None = None
+    valid_time_var: str | None = None  # CF-convention time coordinate variable override -- see
+                                        # ModelConfig's field of the same name for the real case this
+                                        # was added for (a WoFSCast global-attribute bug)
     # Only used to derive lead_hours in the valid_time_attr time-mode (the
     # init_attr/lead_attr mode already has a direct lead-time number to read
     # instead) -- the name of the file's own init-time string attribute,
@@ -349,15 +355,23 @@ def _build_source_config(
 
 
 def _validate_time_mode(section: dict, section_name: str) -> None:
-    """The 'at least one of two field-groups is present' check isn't
+    """The 'at least one of three field-groups is present' check isn't
     expressible via the plain required-tuple mechanism _require_fields()
-    already provides, so this gets its own small validator."""
+    already provides, so this gets its own small validator.
+
+    valid_time_var (a CF-convention time coordinate variable, e.g. for a
+    source whose global valid_time attribute is known-unreliable -- a real
+    confirmed WoFSCast bug) counts as its own independent mode here, not a
+    dependent add-on to valid_time_attr -- a caller using only valid_time_var
+    shouldn't be forced to also supply an unused/irrelevant valid_time_attr
+    just to satisfy this check."""
     has_string_mode = "valid_time_attr" in section
     has_arith_mode = all(k in section for k in ("init_attr", "lead_attr", "init_format"))
-    if not (has_string_mode or has_arith_mode):
+    has_cf_var_mode = "valid_time_var" in section
+    if not (has_string_mode or has_arith_mode or has_cf_var_mode):
         raise ValueError(
-            f"Config section '{section_name}' needs either 'valid_time_attr'+'valid_time_format', "
-            f"or 'init_attr'+'lead_attr'+'init_format'."
+            f"Config section '{section_name}' needs one of: 'valid_time_attr'+'valid_time_format', "
+            f"'init_attr'+'lead_attr'+'init_format', or 'valid_time_var'."
         )
     if ("valid_time_attr" in section) != ("valid_time_format" in section):
         raise ValueError(
@@ -514,6 +528,7 @@ def load_config(path: str) -> Config:
                 "init_format": None,
                 "valid_time_attr": None,
                 "valid_time_format": None,
+                "valid_time_var": None,
                 "init_time_attr": "init_time",
             },
         )
@@ -623,6 +638,7 @@ def load_config(path: str) -> Config:
             init_format=hist_model_section.get("init_format"),
             valid_time_attr=hist_model_section.get("valid_time_attr"),
             valid_time_format=hist_model_section.get("valid_time_format"),
+            valid_time_var=hist_model_section.get("valid_time_var"),
             init_time_attr=hist_model_section.get("init_time_attr", "init_time"),
             output_dir=hist_model_section.get("output_dir", "output/hist_model"),
             mask=hist_model_section.get("mask", "none"),
