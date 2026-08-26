@@ -150,30 +150,77 @@ def run_one_case(config_path: str, case_file: str) -> MatchingSummary:
     )
 
 
-def run_all_cases_sequential(config_path: str) -> dict[str, MatchingSummary]:
+def expected_output_path(case_file: str, output_dir: str) -> str:
+    """The match_init_<init_time>.nc path this case would write, predicted
+    from the case file's own obj_init_<init_time>.nc naming convention --
+    no file I/O needed, since file_grouping="init_snapshot" always names
+    output this way (see match_io.write_match_file)."""
+    case_key = os.path.splitext(os.path.basename(case_file))[0]  # "obj_init_<timestamp>"
+    suffix = case_key[len("obj_init_"):] if case_key.startswith("obj_init_") else case_key
+    return os.path.join(output_dir, f"match_init_{suffix}.nc")
+
+
+def run_all_cases_sequential(
+    config_path: str, skip_existing: bool = False,
+) -> tuple[dict[str, MatchingSummary], dict[str, str]]:
     """Run every discovered forecast case sequentially, in one process -- the
     recommended mode on a memory-constrained machine (see module docstring).
     Use run_matching_per_case_batch.py's run_cases_in_parallel(..., n_workers=N)
     instead only after confirming your machine has enough RAM for N cases'
-    peak memory simultaneously."""
+    peak memory simultaneously.
+
+    A single case's own failure (e.g. no truth data at all within tolerance
+    for that case's real valid-time span -- a real, confirmed occurrence:
+    MRMS coverage can have full-day gaps for a given date) is caught,
+    reported, and does NOT stop the remaining cases -- matching this
+    project's established convention elsewhere (batch_runner.run_cases_in_parallel,
+    expand_batch_config's skipped_no_directory/skipped_no_files) of never
+    letting one bad case silently abort a whole batch.
+
+    skip_existing: if True, a case whose expected output file already exists
+    is skipped without re-matching -- lets an interrupted run (e.g. killed
+    by an external time limit partway through hundreds of cases, a real,
+    confirmed occurrence) resume cheaply instead of redoing already-completed
+    work. Off by default (matches this driver's original, always-overwrite
+    behavior) since staleness (an existing file from a different threshold
+    config) is the caller's responsibility to rule out, not silently assumed.
+
+    Returns (results, failed) -- failed: {case_file: error message}.
+    """
     cfg = load_config(config_path)
     match = require_section(cfg.matching, "matching", config_path)
     case_files = discover_forecast_cases(match.forecast_object_dir, match.file_pattern)
     print(f"Found {len(case_files)} forecast case files under '{match.forecast_object_dir}'")
 
     results = {}
+    failed = {}
+    n_skipped = 0
     for i, case_file in enumerate(case_files, 1):
+        if skip_existing and os.path.exists(expected_output_path(case_file, match.output_dir)):
+            n_skipped += 1
+            continue
         print(f"--- case {i}/{len(case_files)}: {os.path.basename(case_file)} ---")
-        results[case_file] = run_one_case(config_path, case_file)
-    return results
+        try:
+            results[case_file] = run_one_case(config_path, case_file)
+        except Exception as e:
+            print(f"  FAILED: {type(e).__name__}: {e}")
+            failed[case_file] = f"{type(e).__name__}: {e}"
+    if n_skipped:
+        print(f"Skipped {n_skipped} case(s) with an existing output file (skip_existing=True)")
+    return results, failed
 
 
 def main():
     config_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(_THIS_DIR), "configs", "config.yaml")
-    results = run_all_cases_sequential(config_path)
+    results, failed = run_all_cases_sequential(config_path)
     total_written = sum(len(s.output_paths) for s in results.values())
     total_skipped = sum(len(s.skipped_forecast_times) for s in results.values())
-    print(f"\nDone: {len(results)} cases, {total_written} match files written, {total_skipped} forecast times skipped total")
+    print(f"\nDone: {len(results)}/{len(results) + len(failed)} cases succeeded, "
+          f"{total_written} match files written, {total_skipped} forecast times skipped total")
+    if failed:
+        print(f"{len(failed)} case(s) failed and were skipped:")
+        for case_file, msg in failed.items():
+            print(f"  {os.path.basename(case_file)}: {msg}")
 
 
 if __name__ == "__main__":

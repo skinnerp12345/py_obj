@@ -1,16 +1,17 @@
 """Aggregation/subsetting over many histogram files, plus the matched-
-percentile-threshold method (ported from python_base's
-wofs_dz_histogram_plotter.py, generalized into a reusable function instead of
-copy-pasted per comparison).
+percentile-threshold method as a reusable function: find a source value's
+percentile in one distribution, then find the target distribution's value
+at that same percentile.
 
 The whole point of histogram_io.py's per-slice (not pre-collapsed) schema is
 so this module can recombine an arbitrary subset of slices across many
 files -- e.g. every MRMS slice valid at a given hour of day (a climatology),
 or every model slice within a given forecast-lead-hour range (a "day N of
-the forecast" bucket) -- which would be impossible to reconstruct from
-python_base's original one-histogram-per-directory output.
+the forecast" bucket) -- which would be impossible to reconstruct from a
+single collapsed histogram per directory.
 """
 
+from datetime import datetime
 from typing import Callable
 
 import numpy as np
@@ -18,6 +19,15 @@ import numpy as np
 from .histogram_io import HistogramSlice, read_histogram_file
 
 Predicate = Callable[[HistogramSlice], bool]
+
+
+def by_valid_times(valid_times: set[datetime]) -> Predicate:
+    """Keep only slices whose valid_time is in the given set -- e.g. for
+    building a climatology restricted to timestamps where multiple
+    independent sources all have data (a "shared times" comparison across
+    sources with different, non-identical output cadences)."""
+    wanted = set(valid_times)
+    return lambda s: s.valid_time in wanted
 
 
 def by_hour_of_day(hours: int | set[int]) -> Predicate:
@@ -90,9 +100,8 @@ def histogram_to_cdf(bins: np.ndarray, hist: np.ndarray) -> np.ndarray:
 
 
 def value_at_percentile(bins: np.ndarray, cdf: np.ndarray, percentile: float) -> float:
-    """The bin value (left edge, per python_base's own `plot_bins` convention
-    -- within one bin_width of the true value) whose CDF is closest to
-    `percentile` (0.0-1.0 scale)."""
+    """The bin value (left edge -- within one bin_width of the true value)
+    whose CDF is closest to `percentile` (0.0-1.0 scale)."""
     if not 0.0 <= percentile <= 1.0:
         raise ValueError(f"value_at_percentile: percentile must be in [0, 1], got {percentile}")
     idx = int(np.argmin(np.abs(cdf - percentile)))

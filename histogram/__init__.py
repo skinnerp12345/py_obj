@@ -1,6 +1,7 @@
 from .aggregate import (
     by_hour_of_day,
     by_lead_hours_range,
+    by_valid_times,
     histogram_to_cdf,
     histogram_to_pdf,
     match_percentile_threshold,
@@ -24,6 +25,7 @@ __all__ = [
     "sum_histograms",
     "by_hour_of_day",
     "by_lead_hours_range",
+    "by_valid_times",
     "histogram_to_pdf",
     "histogram_to_cdf",
     "value_at_percentile",
