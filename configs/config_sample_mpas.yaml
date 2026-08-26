@@ -19,9 +19,9 @@
 # Thresholds below (35.0/40.0 model, 40.0/45.0 obs) are chosen empirically to
 # produce real, non-trivial objects/matches on this small bundled crop --
 # NOT the production MPAS thresholds (45.0/50.2, see config.yaml/
-# config_ensemble.yaml) -- this sample's storm cluster peaks around 46-47 dBZ,
-# below the production max_value_threshold, so using the real production
-# values here would find zero objects.
+# config_example_identify_track_model.yaml) -- this sample's storm cluster
+# peaks around 46-47 dBZ, below the production max_value_threshold, so using
+# the real production values here would find zero objects.
 
 observations:
   file_format: netcdf

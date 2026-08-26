@@ -1,0 +1,59 @@
+# EXAMPLE CONFIG -- single-purpose: identify_track_model.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the two sections identify_track_model.py's run_one_case()
+# actually reads: `model:` + `linear_classification:` (see the two
+# require_section(...) calls in python_obj/drivers/identify_track_model.py).
+#
+# Real scenario: a 2-member MPAS ensemble (test_mpas/mem1/, test_mpas/mem2/),
+# consolidated into one ensemble_snapshot object file per valid_time.
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model.py python_obj/configs/config_example_identify_track_model.yaml
+
+model:
+  input_dir: ../../test_mpas
+  member_subdirs: true                        # true = one member per immediate subdirectory of input_dir
+  file_pattern: "*_f0[01]?.nc"                # restrict to f000-f012 (13 hourly times)
+  object_output_dir: output/obj_model_ensemble
+  file_format: netcdf
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  boundary_threshold: 45.0       # the established production MPAS threshold pair
+  max_value_threshold: 50.2      # (not a different model's threshold pair -- double-check
+                                   # which model's own thresholds you're using if adapting this)
+  area_threshold_km2: 108.0
+  mask: conus_east
+  track: false
+  track_distance_km: 0.0
+  file_grouping: ensemble_snapshot
+  init_attr: initializationTime   # model-only: global attrs used to derive valid_time
+  lead_attr: forecastHour          # name of the global attribute holding the lead-time NUMBER
+  lead_units: hours                 # the UNIT THAT NUMBER IS ALREADY IN -- not the model's
+                                     # output cadence. Check the raw attribute value in one of
+                                     # your files and match its unit:
+                                     #   MPAS forecastHour=12          -> lead_units: hours
+                                     #   a 5-min-cadence model storing forecast_minute=35
+                                     #                                  -> lead_units: minutes
+                                     #   a model storing lead_seconds=1800
+                                     #                                  -> lead_units: seconds
+                                     # valid_time = init_time + timedelta(**{lead_units: value})
+  init_format: "%Y%m%d%H"
+
+# Shared, not per-source: object shape/linearity is a property of the storm's
+# own footprint, not a per-source dBZ calibration value like the thresholds
+# above. Two independent tiers, checked strict-first: an object meeting the
+# linear_* thresholds is "linear"; failing that but meeting the mixed_*
+# thresholds is "mixed"; meeting neither is "cellular".
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
+  storm_mode_classification: false    # v2: set true + system_boundary_threshold to merge fragmented
+                                       # objects (e.g. a linear system's broken-up leading edge) into
+                                       # one "system" before classification -- see config_sample_mpas_v2.yaml
+  system_boundary_threshold: null     # required when storm_mode_classification is true; must be a
+                                       # LOWER dBZ value than boundary_threshold above

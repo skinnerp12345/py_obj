@@ -2,12 +2,17 @@
 
 Standalone, independently-runnable driver scripts built on top of the rest
 of `python_obj/` (nothing here modifies `regrid/`, `obj_core/`, or
-`config.py`). Each driver reads only the section(s) of the **one shared
-config file** it actually needs — a user populates `python_obj/configs/config.yaml`
-with whichever sections are relevant to their problem, then chooses which
-driver(s) to run. Omitting a section a given driver doesn't use is never an
-error; using a driver whose required section is missing raises a clear,
-named error telling you which section to add.
+`config.py`). Each driver reads only the section(s) of a **config file** it
+actually needs. Every config file functions like a **namelist** familiar
+from NWP models (WRF, MPAS): one flat set of named parameters per section,
+no code changes needed to adjust a run. Populate whichever sections are
+relevant to your problem in `python_obj/configs/config.yaml` (a
+fully-populated, chained reference spanning every section, and every
+driver's own default config path when none is given on the command line),
+or start from `python_obj/configs/config_example_<driver_name>.yaml` (one
+single-purpose example per driver). Omitting a section a given driver
+doesn't use is never an error; using a driver whose required section is
+missing raises a clear, named error telling you which section to add.
 
 The `pysteps_env` conda environment is required for all of these:
 `/opt/anaconda3/envs/pysteps_env/bin/python`.
@@ -32,15 +37,22 @@ Every other field has a documented default — see the comments in
 to **the config file's own directory**, not your current directory, so the
 same file behaves identically no matter where you run a driver from.
 
-`python_obj/configs/config.yaml` as shipped populates all five sections and chains
+`python_obj/configs/config.yaml` as shipped populates all sections and chains
 together end to end (interpolation's output feeds observations' input;
 observations'/model's outputs feed matching's inputs) — a complete,
 self-consistent walkthrough if you run all four drivers against it in
-sequence. `python_obj/configs/config_smoketest.yaml` (interpolation+observations only,
-4 files) and `python_obj/configs/config_ensemble.yaml` (model+linear_classification
-only, 2-member MPAS ensemble) are smaller examples that populate only the
-sections their own scenario needs — a concrete demonstration that omitting
-irrelevant sections is normal, not an error.
+sequence. It also doubles as every driver's own default config path when none
+is given on the command line.
+
+For a single-purpose example matching exactly one driver's own required
+section(s) instead, see `python_obj/configs/config_example_<driver_name>.yaml`
+— one per driver (`config_example_interpolate_mrms.yaml`,
+`config_example_identify_track_mrms.yaml`,
+`config_example_identify_track_model.yaml`, `config_example_run_matching.yaml`,
+`config_example_fetch_mrms.yaml`, `config_example_build_histogram_mrms.yaml`,
+`config_example_build_histogram_model.yaml`). `python_obj/configs/config_smoketest.yaml`
+(interpolation+observations only, 4 files) is a further, bundled-sample-data
+smaller example.
 
 ## `interpolate_mrms.py`
 
@@ -133,9 +145,8 @@ target grid) and no truth-vs-forecast matching. Requires `model:` +
 
 `model.member_subdirs: false` (default) treats `input_dir` as one flat
 series. Set `true` for an ensemble: `input_dir` must then contain one
-immediate subdirectory per member (e.g. `mem1/`, `mem2/`, matching the real
-`test_mpas/mem1/`, `test_mpas/mem2/` convention) — the subdirectory name
-becomes each member's `member_id`, nothing is parsed from filenames.
+immediate subdirectory per member (e.g. `mem1/`, `mem2/`) — the subdirectory
+name becomes each member's `member_id`, nothing is parsed from filenames.
 `model.member_subdir_pattern` (default `"*"`, every subdirectory) restricts
 *which* subdirectories count as members when `member_subdirs: true` and
 `input_dir` has non-member siblings — confirmed real on an NCAR HPC MPAS
@@ -239,16 +250,15 @@ Both modes share the same download machinery: `skip_existing: true`
 (default) skips re-downloading a file whose local size already matches the
 archive's — safe to re-run either mode. Fetched files land at
 `<output_dir>/<YYYYMMDD>/<original filename>` either way — the same layout
-`test_mrms/` and `discover_mrms_files()`/`interpolate_mrms.py` already use —
-point `interpolation.raw_mrms_dir` at the fetched `output_dir` to interpolate
-them with zero further changes.
+`discover_mrms_files()`/`interpolate_mrms.py` already consume — point
+`interpolation.raw_mrms_dir` at the fetched `output_dir` to interpolate them
+with zero further changes.
 
 ## `build_histogram_mrms.py`
 
 Builds a composite-reflectivity (or any configured variable) distribution
-histogram for **each day** of already-interpolated MRMS -- generalizes
-`python_base/mrms_dz_histogram_base.py` (configurable bins/variable instead
-of hardcoded). Requires `histogram_observations:`.
+histogram for **each day** of already-interpolated MRMS, with fully
+configurable bins/variable. Requires `histogram_observations:`.
 
 ```bash
 /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms.py [path/to/config.yaml]
@@ -261,9 +271,8 @@ day-subdirectories and writes **one histogram file per day** under
 than collapsing straight to one flat total -- this is what lets
 `aggregate_histograms.py` subset by hour of day afterward. Default bins:
 -20 to 80 dBZ by 0.2; default `edge_trim=7` pixels off each border (avoids
-regridding-edge artifacts, ported from the original script's hardcoded
-`edge=7`); `clip_negative_to_zero` is off by default (the original WoFS-side
-scripts did this silently -- here it's an explicit opt-in).
+regridding-edge artifacts); `clip_negative_to_zero` is off by default (an
+explicit opt-in, not silent).
 
 Bins are a fixed range with no clear-air/no-echo bin excluded: every valid
 pixel is counted, including clear air, and any real value outside
@@ -288,8 +297,7 @@ fixed-range design above is trying to keep uncontaminated.
 ## `build_histogram_model.py`
 
 Builds one distribution histogram for **one whole forecast** (every lead
-time, every member if an ensemble) -- generalizes
-`python_base/wofs_dz_histogram_base.py`/`wofs_dz_histogram_wofscast.py`.
+time, every member if an ensemble), with fully configurable bins/variable.
 Requires `histogram_model:`. File discovery reuses the same
 `python_obj.obj_core.build_model_manifest` `identify_track_model.py` itself
 uses (same `member_subdirs`/`stacked_members`/`file_pattern` semantics).
@@ -311,10 +319,9 @@ between `init_time_attr` and `valid_time_attr` (same string format) in the
 Demonstrates subsetting the output of the two drivers above -- an
 hour-of-day MRMS climatology, a forecast-lead-hour-bucketed ("day N of the
 forecast") model subset -- then a real matched-percentile-threshold
-computation between the two full distributions: generalizes
-`python_base/wofs_dz_histogram_plotter.py`'s threshold-matching method
-(find a source value's percentile, find the target distribution's value at
-that same percentile) into a reusable function
+computation between the two full distributions: find a source value's
+percentile, then find the target distribution's value at that same
+percentile, via a reusable function
 (`python_obj.histogram.match_percentile_threshold`). Requires
 `histogram_observations:` + `histogram_model:` (reads their own
 `output_dir`s to find the histogram files to aggregate).

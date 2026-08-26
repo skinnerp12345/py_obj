@@ -1,14 +1,12 @@
-# REFERENCE TEMPLATE -- demonstrates expand_batch_config()'s init_times /
-# init_time_range expansion axis: archives that nest multiple forecast
-# initializations under one date directory (YYYYMMDD/HHMM/, common in
-# short-term NWP -- WoFS, NowcastNet, etc.), not just one case per date.
+# Reference example only -- points at an external dataset not bundled with
+# this repo; adapt the paths to your own directory layout.
 #
-# Unlike config_batch_template.yaml (a fictitious HPC path, not runnable
-# as-is), this one is REAL and RUNNABLE against this repo's own bundled
-# ../../nowcastnet_netcdf/ directory (real NowcastNet deep-learning nowcast
-# output, WoFS-style directory layout: 20260423/0000/, 20260423/0100/, ...).
-# Not part of python_obj/'s own self-contained upload -- a "bring your own
-# larger dataset" reference, same convention as config.yaml/config_ensemble.yaml.
+# Demonstrates expand_batch_config()'s init_times / init_time_range
+# expansion axis: archives that nest multiple forecast initializations under
+# one date directory (YYYYMMDD/HHMM/, common in short-term NWP -- WoFS,
+# NowcastNet, etc.), not just one case per date. Modeled on a real
+# NowcastNet deep-learning nowcast archive, WoFS-style directory layout:
+# 20260423/0000/, 20260423/0100/, etc.
 #
 # The "cases:" section is read only by expand_batch_config() itself --
 # load_config()/run_one_case() never see it, it's purely metadata about how

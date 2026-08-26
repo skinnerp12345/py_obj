@@ -1,0 +1,32 @@
+# EXAMPLE CONFIG -- single-purpose: interpolate_mrms.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the `interpolation:` section -- the one section
+# interpolate_mrms.py's run_one_case() actually reads (see
+# require_section(cfg.interpolation, ...) in python_obj/drivers/interpolate_mrms.py).
+# For a driver that needs more than one section (e.g. identify_track_mrms.py
+# needs observations:+linear_classification: together), see that driver's own
+# config_example_*.yaml sibling.
+#
+# Points at the larger, non-bundled local test_mrms/test_mpas/ datasets (a
+# "bring your own data" reference, like configs/config.yaml) -- not part of
+# python_obj/'s own self-contained sample_data/ bundle.
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/interpolate_mrms.py python_obj/configs/config_example_interpolate_mrms.yaml
+
+interpolation:
+  raw_mrms_dir: ../../test_mrms                # raw native-grid MRMS GRIB2, YYYYMMDD/ subdirs
+  interp_mrms_dir: output/interp_mrms        # where interpolated NetCDF files are written
+  target_grid_file: ../../test_mpas/mem1/interp_mpas_3km_2023050100_mem1_f000.nc
+  target_lat_name: latitude
+  target_lon_name: longitude
+  n_workers: 8
+  weight_cache_dir: output/weight_cache
+  date_range: ["20230401", "20230402"]        # inclusive YYYYMMDD range; set to null for everything found
+  max_files: null                             # cap file count after discovery/date filtering; null = no cap
+  file_pattern: "**/*.grib2*"                 # restricts to one MRMS product when a date directory
+                                               # holds more than one (e.g. MESH/RotationTrack alongside
+                                               # MergedReflectivityQCComposite) -- e.g.
+                                               # "**/*MergedReflectivityQCComposite*" to select only that product

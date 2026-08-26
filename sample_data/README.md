@@ -47,8 +47,10 @@ not runnable from a fresh clone that only has this trimmed output.
 
 ## What's NOT bundled here
 
-`config.yaml` and `config_ensemble.yaml` (the two example configs that
-demonstrate a multi-day MRMS range and a 2-member MPAS ensemble) intentionally
-still point at the larger, non-bundled `test_mrms/`/`test_mpas/` directories --
-those two configs are "bring your own larger dataset" reference examples, not
-meant to run out of a fresh clone. See the top-level README for details.
+`config.yaml` (which demonstrates a multi-day MRMS range and a 2-member MPAS
+ensemble, chained across every section) and the single-purpose
+`config_example_*.yaml` files (one per driver, same larger-dataset paths as
+config.yaml) intentionally still point at the larger, non-bundled
+`test_mrms/`/`test_mpas/` directories -- these are "bring your own larger
+dataset" reference examples, not meant to run out of a fresh clone. See the
+top-level README for details.

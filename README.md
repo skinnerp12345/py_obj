@@ -84,21 +84,33 @@ pytest tests/
 Everything above works out of a fresh clone with **zero external data** —
 `sample_data/` bundles small, real (not synthetic) MRMS/MPAS/WoFS files
 trimmed down to just what the library reads (see `sample_data/README.md` for
-exact provenance). Two of the example configs (`configs/config.yaml`,
-`configs/config_ensemble.yaml`) are the exception: they intentionally
-demonstrate scenarios (a multi-day MRMS range, a 2-member MPAS ensemble) too
-large to bundle, and are meant as "bring your own larger dataset" references
-— point their paths at your own data to run them.
+exact provenance). `configs/config.yaml` (a multi-day MRMS range, a 2-member
+MPAS ensemble) is the exception: it intentionally demonstrates a scenario too
+large to bundle, and is meant as a "bring your own larger dataset" reference
+— point its paths at your own data to run it. The single-purpose
+`configs/config_example_*.yaml` files (one per driver — see "Configuration"
+below) use the same larger-dataset paths as `config.yaml`.
 
 ## Configuration
 
-One shared YAML config file, independently optional top-level sections
-(`interpolation`, `observations`, `model`, `matching`, `linear_classification`,
-`fetch_mrms`, `histogram_observations`, `histogram_model`). Populate only the
-sections your problem needs; each driver script reads only the section(s) it
-requires and raises a clear error naming which section is missing, rather
-than guessing. See `drivers/README.md` for the full section/field reference
-and `configs/config.yaml` for a fully-populated, chained example.
+Each YAML config file here functions like a **namelist** familiar from NWP
+models (WRF, MPAS) — one flat set of named parameters per section, no code
+changes needed to adjust a run. One shared schema, independently optional
+top-level sections (`interpolation`, `observations`, `model`, `matching`,
+`linear_classification`, `fetch_mrms`, `histogram_observations`,
+`histogram_model`). Populate only the sections your problem needs; each
+driver script reads only the section(s) it requires and raises a clear error
+naming which section is missing, rather than guessing.
+
+For a single-purpose example matching exactly one driver's own required
+section(s), see `configs/config_example_<driver_name>.yaml` (e.g.
+`config_example_interpolate_mrms.yaml`, `config_example_run_matching.yaml`).
+`configs/config.yaml` is instead a fully-populated, chained example spanning
+every section end to end (each section's output feeding the next's input),
+and doubles as every driver's own default config path when none is given on
+the command line. See `drivers/README.md` for the full section/field
+reference and `configs/CONFIG_REFERENCE.md` for a field-by-field reference of
+every config option.
 
 ## License
 

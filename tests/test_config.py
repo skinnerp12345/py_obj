@@ -33,11 +33,11 @@ PYTHON_OBJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIGS_DIR = os.path.join(PYTHON_OBJ_DIR, "configs")
 REAL_CONFIG_PATH = os.path.join(CONFIGS_DIR, "config.yaml")
 MPAS_MEM_DIR = os.path.join(REPO_ROOT, "test_mpas")   # unchanged -- test data doesn't move
-# config.yaml/config_ensemble.yaml deliberately still point at this larger,
-# non-bundled 2-member (mem1/mem2) local dataset (see python_obj/sample_data/README.md,
-# "What's NOT bundled here") -- the 2 checks below that validate config.yaml's
-# own real ensemble behavior against it skip cleanly (not fail) when it's
-# absent, e.g. on a fresh clone that only has the bundled sample_data/.
+# config.yaml deliberately still points at this larger, non-bundled 2-member
+# (mem1/mem2) local dataset (see python_obj/sample_data/README.md, "What's
+# NOT bundled here") -- the 2 checks below that validate config.yaml's own
+# real ensemble behavior against it skip cleanly (not fail) when it's absent,
+# e.g. on a fresh clone that only has the bundled sample_data/.
 _SKIP_NO_LOCAL_MPAS_ENSEMBLE = pytest.mark.skipif(
     not os.path.isdir(os.path.join(MPAS_MEM_DIR, "mem1")),
     reason="requires the larger local test_mpas/mem1,mem2/ dataset (not bundled -- see sample_data/README.md)",

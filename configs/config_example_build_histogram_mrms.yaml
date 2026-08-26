@@ -1,0 +1,27 @@
+# EXAMPLE CONFIG -- single-purpose: build_histogram_mrms.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the `histogram_observations:` section -- the one section
+# build_histogram_mrms.py's run_one_case() actually reads (see
+# require_section(cfg.histogram_observations, ...) in
+# python_obj/drivers/build_histogram_mrms.py). Self-contained: no
+# thresholds/masking/tracking-object fields, since this builds a raw
+# reflectivity-value distribution, not identified storm objects.
+#
+# Reads output/interp_mrms, the same directory config_example_interpolate_mrms.yaml
+# writes to -- run that driver first, or point interp_mrms_dir at your own
+# already-interpolated MRMS output.
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms.py python_obj/configs/config_example_build_histogram_mrms.yaml
+
+histogram_observations:
+  interp_mrms_dir: output/interp_mrms   # e.g. config_example_interpolate_mrms.yaml's own output (parent of YYYYMMDD/ subdirs)
+  var_name: refl_consv
+  lat_name: lat
+  lon_name: lon
+  output_dir: output/hist_mrms
+  mask: conus_east   # none | conus | conus_east
+  # bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero omitted --
+  # library defaults (-20 to 80 by 0.2 dBZ, edge_trim=7, clip off) already fit

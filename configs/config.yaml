@@ -2,12 +2,19 @@
 # ID/tracking, model/forecast object ID/tracking, and matching. Loaded via
 # python_obj.config.load_config(path) -> Config.
 #
+# Functions like a namelist familiar from NWP models (WRF, MPAS) -- one flat
+# set of named parameters per section, no code changes needed to adjust a
+# run. This particular file also doubles as every driver's own DEFAULT config
+# path when none is given on the command line.
+#
 # Every section below is INDEPENDENTLY OPTIONAL -- populate only the ones
 # relevant to your problem. A driver script (python_obj/drivers/) reads only
 # the section(s) it needs and raises a clear error if a section IT requires
 # is missing; omitting a section this driver doesn't use is never an error.
-# See configs/config_smoketest.yaml and configs/config_ensemble.yaml for
-# examples that only populate a subset of sections.
+# See configs/config_smoketest.yaml for a bundled-sample-data example that
+# only populates a subset of sections, or configs/config_example_*.yaml for
+# one single-purpose example config per driver (matching exactly that
+# driver's own required section(s), e.g. config_example_run_matching.yaml).
 #
 # Paths are resolved relative to THIS FILE's own directory, not the current
 # working directory -- so these scripts behave the same regardless of where
@@ -63,9 +70,9 @@ model:
   var_name: refl10cm_max
   lat_name: latitude
   lon_name: longitude
-  boundary_threshold: 45.0       # python_base/object_matcher_mpas.py's actual MPAS threshold
-  max_value_threshold: 50.2      # (corrected -- earlier ad-hoc test scripts had mistakenly
-                                   # used object_matcher_wofscast.py's 39.8/45.6 pair instead)
+  boundary_threshold: 45.0       # the established production MPAS threshold pair
+  max_value_threshold: 50.2      # (not a different model's threshold pair -- double-check
+                                   # which model's own thresholds you're using if adapting this)
   area_threshold_km2: 108.0
   mask: conus_east
   track: false

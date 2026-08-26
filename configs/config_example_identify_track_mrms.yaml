@@ -1,0 +1,53 @@
+# EXAMPLE CONFIG -- single-purpose: identify_track_mrms.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the two sections identify_track_mrms.py's run_one_case()
+# actually reads: `observations:` + `linear_classification:` (see the two
+# require_section(...) calls in python_obj/drivers/identify_track_mrms.py) --
+# linear_classification: is paired here (not split further) because this
+# driver genuinely needs both together, not because they're incidentally
+# bundled.
+#
+# Points at output/interp_mrms, the same directory config_example_interpolate_mrms.yaml
+# writes to -- run that driver first, or point interp_mrms_dir at your own
+# already-interpolated MRMS output.
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_mrms.py python_obj/configs/config_example_identify_track_mrms.yaml
+
+observations:
+  file_format: netcdf          # netcdf | grib2 -- selects the loader
+  var_name: refl_consv          # matches the interpolated-MRMS output convention
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: output/interp_mrms   # e.g. config_example_interpolate_mrms.yaml's own output
+  object_output_dir: output/obj_mrms
+  boundary_threshold: 40.0      # initial object-boundary ID threshold (dBZ)
+  max_value_threshold: 45.0     # stricter threshold an object's peak must exceed to be retained (dBZ)
+  area_threshold_km2: 108.0
+  mask: conus_east               # none | conus | conus_east
+  track: false
+  track_distance_km: 0.0         # 0.0 = touching/overlapping only, matching legacy behavior
+  file_grouping: single           # single | member_series | ensemble_snapshot | full | init_snapshot
+                                   #   single: one file per output time (typical for observations)
+                                   #   member_series: one file per member, all its times consolidated
+                                   #   ensemble_snapshot: one file per time, all members consolidated
+                                   #   full: one file, all members x all times consolidated
+                                   #   init_snapshot: one file per forecast case (needs init_time)
+
+# Shared, not per-source: object shape/linearity is a property of the storm's
+# own footprint, not a per-source dBZ calibration value like the thresholds
+# above. Two independent tiers, checked strict-first: an object meeting the
+# linear_* thresholds is "linear"; failing that but meeting the mixed_*
+# thresholds is "mixed"; meeting neither is "cellular".
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
+  storm_mode_classification: false    # v2: set true + system_boundary_threshold to merge fragmented
+                                       # objects (e.g. a linear system's broken-up leading edge) into
+                                       # one "system" before classification -- see config_sample_mpas_v2.yaml
+  system_boundary_threshold: null     # required when storm_mode_classification is true; must be a
+                                       # LOWER dBZ value than boundary_threshold above

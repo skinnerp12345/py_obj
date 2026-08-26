@@ -1,0 +1,34 @@
+# EXAMPLE CONFIG -- single-purpose: fetch_mrms.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the `fetch_mrms:` section -- the one section
+# fetch_mrms.py's run_one_case() actually reads (see
+# require_section(cfg.fetch_mrms, ...) in python_obj/drivers/fetch_mrms.py).
+#
+# Model-driven mode shown here: fetch MRMS observations from the public
+# noaa-mrms-pds AWS archive to match a directory of model files' valid times
+# -- e.g. WoFS, which has no local matching MRMS data yet. Exactly one of two
+# time-derivation modes must be given: a ready-made valid_time STRING
+# attribute (valid_time_attr + valid_time_format, WoFS's convention), or
+# init+lead arithmetic (init_attr + lead_attr + lead_units + init_format,
+# MPAS's convention) -- whichever this model's own files actually use. (A
+# separate date-driven mode also exists -- dates:/date_range: instead of
+# model_input_dir -- for fetching everything on a given date with no model
+# file involved at all; see python_obj/configs/CONFIG_REFERENCE.md.)
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/fetch_mrms.py python_obj/configs/config_example_fetch_mrms.yaml
+
+fetch_mrms:
+  model_input_dir: ../../test_wofs
+  file_pattern: "*.nc"
+  output_dir: output/fetched_mrms_wofs
+  valid_time_attr: valid_time
+  valid_time_format: "%Y%m%d_%H%M%S"
+  tolerance_minutes: 2.5   # MRMS's real ~2-min cadence has irregular seconds jitter
+  s3_bucket: noaa-mrms-pds
+  mrms_product: MergedReflectivityQCComposite_00.50
+  mirror_subdirs: true
+  skip_existing: true
+  max_files: null

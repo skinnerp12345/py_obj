@@ -1,20 +1,17 @@
-# SAMPLE CONFIG -- object identification + tracking against real MET-tool-
-# produced MRMS observations (wofs_mrms_test/, downloaded example hour: 12
-# files, 5-min cadence, 2026-05-01 02:00Z-02:55Z, WoFS-style YYYYMMDD/HHMM-
-# ish directory naming where the directory date can trail the filename date
-# by a day -- see CLAUDE.md for the full "0905-0900Z" convention).
+# Reference example only -- points at an external dataset not bundled with
+# this repo; adapt the paths to your own directory layout.
 #
-# Not part of python_obj/'s own self-contained bundle -- like
-# config_sample_wofs.yaml/config_sample_mpas.yaml, this points at real,
-# externally-downloaded data (../../wofs_mrms_test/, a sibling of
-# python_obj/ at the repo root), a "bring your own data" reference.
+# Demonstrates object identification + tracking against real MET-tool-
+# produced MRMS observations (wofs_mrms_test/, downloaded example hour: 12
+# files, 5-min cadence, WoFS-style YYYYMMDD/HHMM-ish directory naming where
+# the directory date can trail the filename date by a day -- a real UTC
+# day-crossover archive convention).
 #
 # file_pattern is REQUIRED here, not optional: this real archive convention
 # mixes a few non-data files into each date directory that sort before the
 # real wofs_MRMS_RAD_*.nc product files -- without file_pattern restricting
 # discovery to the real product naming, identify_track_mrms.py raises
-# KeyError: 'lat' on the first non-conforming file it reads (see CLAUDE.md's
-# "file_pattern for MRMS observation discovery" entry for the full diagnosis).
+# KeyError: 'lat' on the first non-conforming file it reads.
 
 observations:
   file_format: netcdf

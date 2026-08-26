@@ -1,0 +1,29 @@
+# EXAMPLE CONFIG -- single-purpose: build_histogram_model.py only.
+#
+# Functions like a namelist familiar from NWP models (WRF, MPAS): one flat
+# set of named parameters, no code changes needed to adjust a run. This file
+# demonstrates ONLY the `histogram_model:` section -- the one section
+# build_histogram_model.py's run_one_case() actually reads (see
+# require_section(cfg.histogram_model, ...) in
+# python_obj/drivers/build_histogram_model.py). Self-contained: no
+# thresholds/masking/tracking-object fields, since this builds a raw
+# reflectivity-value distribution, not identified storm objects.
+#
+# Run with:
+#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_model.py python_obj/configs/config_example_build_histogram_model.yaml
+
+histogram_model:
+  input_dir: ../../test_mpas
+  member_subdirs: true          # true = one member per immediate subdirectory of input_dir (mem1/, mem2/)
+  file_pattern: "*.nc"          # all 23 lead times (f000-f132)
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  output_dir: output/hist_model_mpas
+  mask: conus_east   # none | conus | conus_east
+  # bin_min/bin_max/bin_width/edge_trim/clip_negative_to_zero omitted --
+  # library defaults (-20 to 80 by 0.2 dBZ, edge_trim=7, clip off) already fit
