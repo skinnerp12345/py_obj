@@ -632,3 +632,188 @@ def test_identify_track_mrms_file_pattern_excludes_non_data_file(tmp_path):
     out_paths = run_one_case(filtered_cfg_path)
     print(f"\n[id-check9] file_pattern excluded the decoy -- {len(out_paths)} object file(s) written")
     assert len(out_paths) == len(real_files)
+
+
+# --- Check 10: storm_mode_classification=False regression -- v1 stays default
+
+def test_storm_mode_classification_off_is_default_and_leaves_system_id_none():
+    """storm_mode_classification=False (the default) must never populate
+    system_id, and every object's is_linear must be exactly its own
+    individually-computed classification -- confirms the new merge code path
+    (only reachable via `if storm_mode_classification and objects:`) never
+    runs at all when the toggle is left off, the "v1 stays default" guarantee."""
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+
+    data = np.zeros((60, 60))
+    data[10:13, 5:8] = 50.0
+    data[10:13, 25:28] = 50.0
+    data[10:13, 45:48] = 50.0
+
+    labels, objects = identify_objects(data, gg, thresh_1=20.0, thresh_2=30.0, area_thresh_km2=1.0)
+    print(f"\n[id-check10] storm_mode_classification off: {len(objects)} objects, "
+          f"system_ids={[o.system_id for o in objects]}, is_linear={[o.is_linear for o in objects]}")
+    assert len(objects) == 3
+    assert all(o.system_id is None for o in objects)
+    # small isolated 3x3-ish blobs, well short of any linear/mixed length bar
+    assert all(o.is_linear == 0 for o in objects)
+
+
+# --- Check 11: storm-mode merge -- 3 individually-cellular objects reclassified
+# as one linear system once connected at a lower system_boundary_thresh
+
+def test_storm_mode_classification_merges_and_reclassifies_system():
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+
+    # 3 small, individually near-square (isotropic, low-eccentricity) blobs at
+    # thresh_1=20 -- far too small/round to ever classify as linear/mixed on
+    # their own. A connecting corridor at value=15 (below thresh_1, but above
+    # a lower system_boundary_thresh=10) links all 3 into one connected region
+    # ONLY at that lower threshold -- the corridor pixels themselves are never
+    # part of any individual object's own footprint, and per this feature's
+    # design the merged geometry used for reclassification is the UNION of
+    # the constituent objects' own pixels, not the corridor.
+    data = np.zeros((60, 60))
+    data[10:13, 5:8] = 50.0
+    data[10:13, 25:28] = 50.0
+    data[10:13, 45:48] = 50.0
+    data[11, 5:48] = np.maximum(data[11, 5:48], 15.0)  # corridor, row 11 only
+
+    # generous, test-specific thresholds: individual 3x3 blobs (~15-17 km
+    # major axis, ~0 eccentricity) must fail both tiers; the merged system
+    # (pixels spread across 42 columns, ~200 km) must clear the mixed tier at
+    # minimum -- asserted as "> 0 and differs from the individual value"
+    # below rather than pinned to an exact tier, to stay robust to the precise
+    # eigenvalue-based length/eccentricity numbers.
+    kwargs = dict(
+        thresh_1=20.0, thresh_2=30.0, area_thresh_km2=1.0,
+        linear_eccentricity_thresh=0.3, linear_length_thresh_km=50.0,
+        mixed_eccentricity_thresh=0.2, mixed_length_thresh_km=30.0,
+    )
+
+    _, objects_off = identify_objects(data, gg, storm_mode_classification=False, **kwargs)
+    assert len(objects_off) == 3
+    assert all(o.is_linear == 0 for o in objects_off), "individually, none of the 3 blobs should classify as linear/mixed"
+
+    _, objects_on = identify_objects(
+        data, gg, storm_mode_classification=True, system_boundary_thresh=10.0, **kwargs
+    )
+    print(f"\n[id-check11] storm_mode_classification on: "
+          f"system_ids={[o.system_id for o in objects_on]}, is_linear={[o.is_linear for o in objects_on]}")
+    assert len(objects_on) == 3
+    system_ids = {o.system_id for o in objects_on}
+    assert len(system_ids) == 1 and None not in system_ids, "all 3 objects must share one system_id"
+    assert system_ids == {min(o.id for o in objects_on)}, "system_id convention: minimum constituent object id"
+    is_linear_values = {o.is_linear for o in objects_on}
+    assert len(is_linear_values) == 1, "all 3 members of one system must share the same reclassified is_linear"
+    assert is_linear_values != {0}, "merged system should be reclassified above cellular -- the whole point of this feature"
+
+
+def test_storm_mode_classification_singleton_system_is_a_no_op():
+    """A single isolated object at system_boundary_thresh (no neighbors to
+    merge with) still gets a system_id (per the documented "trivially reduces
+    to today's per-object result" behavior), but its is_linear must be
+    unchanged from the individually-computed value."""
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+
+    data = np.zeros((60, 60))
+    data[10:15, 10:15] = 50.0  # one isolated 5x5 blob, nothing nearby to merge with
+
+    _, objects_off = identify_objects(data, gg, thresh_1=20.0, thresh_2=30.0, area_thresh_km2=1.0)
+    _, objects_on = identify_objects(
+        data, gg, thresh_1=20.0, thresh_2=30.0, area_thresh_km2=1.0,
+        storm_mode_classification=True, system_boundary_thresh=10.0,
+    )
+    print(f"\n[id-check11b] singleton: off is_linear={objects_off[0].is_linear}, "
+          f"on is_linear={objects_on[0].is_linear} system_id={objects_on[0].system_id}")
+    assert len(objects_on) == 1
+    assert objects_on[0].system_id == objects_on[0].id
+    assert objects_on[0].is_linear == objects_off[0].is_linear
+
+
+# --- Check 12: split-branch lineage -- one object splits into two, each gets
+# a brand-new branch_id while retaining the shared track_id; an unsplit
+# continuation afterward inherits its own branch_id unchanged.
+
+def test_tracking_split_mints_new_branch_ids_and_preserves_track_id():
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    t1 = t0 + timedelta(minutes=5)
+    t2 = t1 + timedelta(minutes=5)
+
+    # t0: one parent object spanning the full region both children will later
+    # occupy, so each child's t1 footprint exact-overlaps the SAME parent id.
+    d0 = np.zeros((60, 60)); d0[10:35, 10:35] = 50.0
+    labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
+    assert len(objs0) == 1
+    tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
+    parent_track_id = tracked0[0].track_id
+    parent_branch_id = tracked0[0].branch_id
+    assert parent_track_id == parent_branch_id == 1
+
+    # t1: parent splits into 2 disjoint children, both inside the parent's t0
+    # footprint. Row-major label scanning guarantees child A (lower rows)
+    # gets label 1, child B (higher rows) gets label 2.
+    d1 = np.zeros((60, 60))
+    d1[10:14, 10:14] = 50.0   # child A
+    d1[30:34, 30:34] = 50.0   # child B
+    labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
+    assert len(objs1) == 2
+    tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+
+    print(f"\n[id-check12] t0: track_id={parent_track_id}, branch_id={parent_branch_id} | "
+          f"t1 (split): {[(o.id, o.track_id, o.branch_id) for o in tracked1]}")
+    assert len(tracked1) == 2
+    assert all(o.track_id == parent_track_id for o in tracked1), "lineage (track_id) must be preserved through a split"
+    branch_ids_t1 = [o.branch_id for o in tracked1]
+    assert len(set(branch_ids_t1)) == 2, "every child of a split must get its OWN distinct branch_id"
+    assert parent_branch_id not in branch_ids_t1, "no child is 'the' continuation -- neither reuses the parent's branch_id"
+
+    child_a = tracked1[0]  # label 1 -> rows 10-14 -> child A by construction
+
+    # t2: continue ONLY child A (slightly shifted, still overlapping A's t1
+    # footprint), with no object anywhere near child B's old position --
+    # ordinary 1-parent-1-child continuation, branch_id must be inherited
+    # unchanged (not re-minted).
+    d2 = np.zeros((60, 60)); d2[10:14, 11:15] = 50.0
+    labels2, objs2 = identify_objects(d2, gg, 20.0, 30.0, 1.0)
+    assert len(objs2) == 1
+    tracked2, nid = track_objects_incremental(tracked1, labels1, t1, objs2, labels2, t2, gg, next_track_id=nid)
+
+    print(f"[id-check12] t2 (continuing child A only): track_id={tracked2[0].track_id}, branch_id={tracked2[0].branch_id}")
+    assert tracked2[0].track_id == parent_track_id
+    assert tracked2[0].branch_id == child_a.branch_id, "unsplit continuation must inherit branch_id unchanged, not fork again"
+
+
+def test_tracking_no_split_and_untracked_controls():
+    """Control cases: (a) ordinary unsplit continuation keeps branch_id ==
+    track_id throughout (both minted once at CI, never re-forked); (b)
+    objects produced without ever calling track_objects_incremental have
+    branch_id=None, exactly as before this feature existed."""
+    lat2d, lon2d = _synthetic_grid()
+    gg = precompute_grid_geometry(lat2d, lon2d)
+
+    # (b) untracked -- identify_objects alone never touches branch_id/track_id
+    data = np.zeros((60, 60)); data[10:15, 10:15] = 50.0
+    _, objs = identify_objects(data, gg, 20.0, 30.0, 1.0)
+    assert objs[0].branch_id is None and objs[0].track_id is None
+    print(f"\n[id-check13] untracked object: branch_id={objs[0].branch_id}, track_id={objs[0].track_id}")
+
+    # (a) ordinary continuation, no split ever occurs
+    t0 = datetime(2023, 5, 1, 0, 0, 0)
+    t1 = t0 + timedelta(minutes=5)
+    d0 = np.zeros((60, 60)); d0[10:15, 10:15] = 50.0
+    d1 = np.zeros((60, 60)); d1[10:15, 11:16] = 50.0  # shifted, still overlapping
+    labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
+    tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
+    labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
+    tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+
+    print(f"[id-check13] t0: track_id={tracked0[0].track_id}, branch_id={tracked0[0].branch_id} | "
+          f"t1 (no split): track_id={tracked1[0].track_id}, branch_id={tracked1[0].branch_id}")
+    assert tracked0[0].track_id == tracked0[0].branch_id, "at CI, branch_id starts equal to track_id"
+    assert tracked1[0].track_id == tracked0[0].track_id
+    assert tracked1[0].branch_id == tracked0[0].branch_id, "no split occurred -- branch_id must stay unchanged"

@@ -1,26 +1,27 @@
 """Object matching: classify truth vs. forecast objects into hit/miss/
 false_alarm/truth_extra/forecast_extra via a Total Interest (TI) score.
 
-Ports python_base/object_matcher_base.py's calc_ti/calc_ti_area_ratio (lines
-274-325) unchanged in formula, fed km-space geometry (Step 2's
-centroid_dist_km/boundary_dist_km) instead of pixel-index distances
-pre-divided by a scalar dx. Operates on the unified StormObject for both
-sides -- the legacy functions awkwardly expect a dict for MRMS and a
-regionprops object for WoFS; StormObject already eliminates that asymmetry.
+Implements the standard Total Interest scoring formula used in object-based
+verification (centroid + boundary displacement, area-ratio-weighted),
+unchanged in formula from established practice, but fed km-space geometry
+(Step 2's centroid_dist_km/boundary_dist_km) instead of pixel-index
+distances pre-divided by a scalar dx. Operates on the unified StormObject
+for both sides, avoiding the asymmetric truth-vs-forecast object
+representations a dict-for-one-side/regionprops-for-the-other approach would
+otherwise require.
 
 The MATCHING ALGORITHM itself (this module's match_objects_one_timestep) is
-NOT a port of the legacy's iterative reassignment loop (lines 330-438), which
-resolves contested duplicate claims via up to 5 rounds of "each unmatched
-object picks its best still-available partner, repeat." Per the user's
-request, this is replaced with a single global greedy assignment over all
-candidate pairs: compute the full pairwise spatial TI matrix once, define the
-candidate population as pairs exceeding ti_threshold, weight by area ratio,
-sort all candidates by weighted TI descending, and walk the sorted list once
-confirming a match whenever both objects are still free. This resolves every
-contested duplicate directly (the highest-scoring pair for any contested
-object is always considered first in the single sorted pass) with no
-iteration cap needed, and is a standard approach for this kind of bipartite
-object-matching problem.
+deliberately NOT an iterative reassignment loop (resolving contested
+duplicate claims via repeated rounds of "each unmatched object picks its
+best still-available partner"). Instead this uses a single global greedy
+assignment over all candidate pairs: compute the full pairwise spatial TI
+matrix once, define the candidate population as pairs exceeding
+ti_threshold, weight by area ratio, sort all candidates by weighted TI
+descending, and walk the sorted list once confirming a match whenever both
+objects are still free. This resolves every contested duplicate directly
+(the highest-scoring pair for any contested object is always considered
+first in the single sorted pass) with no iteration cap needed, and is a
+standard approach for this kind of bipartite object-matching problem.
 """
 
 from dataclasses import dataclass
@@ -58,7 +59,7 @@ def total_interest_area_ratio(ti: float, area1_km2: float, area2_km2: float) -> 
 
 _MATCH_RECORD_SIDE_FIELDS = [
     "area_km2", "max_intensity", "mean_intensity", "is_linear", "centroid_lat", "centroid_lon",
-    "solidity", "major_axis_length", "minor_axis_length", "eccentricity",
+    "solidity", "major_axis_length", "minor_axis_length", "eccentricity", "system_id",
 ]
 
 
@@ -82,6 +83,7 @@ class MatchRecord:
     truth_major_axis_length: float | None = None
     truth_minor_axis_length: float | None = None
     truth_eccentricity: float | None = None
+    truth_system_id: int | None = None  # only set when storm_mode_classification was enabled at ID time
 
     forecast_area_km2: float | None = None
     forecast_max_intensity: float | None = None
@@ -92,6 +94,7 @@ class MatchRecord:
     forecast_solidity: float | None = None
     forecast_major_axis_length: float | None = None
     forecast_minor_axis_length: float | None = None
+    forecast_system_id: int | None = None  # only set when storm_mode_classification was enabled at ID time
     forecast_eccentricity: float | None = None
 
 

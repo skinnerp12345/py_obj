@@ -60,6 +60,8 @@ def run_object_id_series(
     linear_length_thresh_km: float = 200.0,
     mixed_eccentricity_thresh: float = 0.75,
     mixed_length_thresh_km: float = 100.0,
+    storm_mode_classification: bool = False,
+    system_boundary_thresh: float | None = None,
 ) -> list[str]:
     """Identify (and optionally track) objects for every entry in `manifest`,
     writing output object file(s) under `output_dir` per `file_grouping`.
@@ -74,6 +76,12 @@ def run_object_id_series(
     mixed_length_thresh_km: passed straight through to identify_objects() for
     the three-way linear/mixed/cellular classification (see
     StormObject.is_linear there).
+
+    storm_mode_classification/system_boundary_thresh: passed straight through
+    to identify_objects() (see there for the full rationale) and to every
+    write_object_file() call below, so the output schema's system_id
+    field/attribute is present exactly when this is enabled. Default False,
+    v1-identical behavior otherwise.
 
     Tracking, when enabled, only ever links objects across consecutive times
     *within the same member* -- age/track_id along a fixed member's own
@@ -118,6 +126,8 @@ def run_object_id_series(
                 linear_length_thresh_km=linear_length_thresh_km,
                 mixed_eccentricity_thresh=mixed_eccentricity_thresh,
                 mixed_length_thresh_km=mixed_length_thresh_km,
+                storm_mode_classification=storm_mode_classification,
+                system_boundary_thresh=system_boundary_thresh,
             )
 
             if track_in_time:
@@ -145,6 +155,7 @@ def run_object_id_series(
                 n_source_files=len([e.filepath for e in manifest if e.member_id == r.member_id and e.valid_time == r.valid_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+                storm_mode_classification=storm_mode_classification,
             )
             output_paths.append(path)
 
@@ -159,6 +170,7 @@ def run_object_id_series(
                 n_source_files=len([e.filepath for e in manifest if e.member_id == member_id]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+                storm_mode_classification=storm_mode_classification,
             )
             output_paths.append(path)
 
@@ -173,6 +185,7 @@ def run_object_id_series(
                 n_source_files=len([e.filepath for e in manifest if e.valid_time == valid_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+                storm_mode_classification=storm_mode_classification,
             )
             output_paths.append(path)
 
@@ -211,6 +224,7 @@ def run_object_id_series(
                 n_source_files=len([e.filepath for e in manifest if e.init_time == this_init_time]),
                 thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
                 tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+                storm_mode_classification=storm_mode_classification,
             )
             output_paths.append(path)
 

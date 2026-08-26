@@ -71,6 +71,7 @@ class ObjectFileContents:
     valid_times: list[datetime] | None
     init_time: datetime | None
     tracked: bool
+    storm_mode_classification: bool
     thresh_1: float
     thresh_2: float
     area_thresh_km2: float
@@ -120,6 +121,7 @@ def write_object_file(
     area_thresh_km2: float,
     tracked: bool = False,
     track_bound_disp_km: float | None = None,
+    storm_mode_classification: bool = False,
 ) -> None:
     """Write one object file from a list of per-(member,time) results.
 
@@ -249,6 +251,12 @@ def write_object_file(
             age_var[:] = [o.age_seconds if o.age_seconds is not None else np.nan for o in flat_objects]
             track_id_var = ds.createVariable("track_id", "i8", ("object",), zlib=True)
             track_id_var[:] = [o.track_id if o.track_id is not None else -1 for o in flat_objects]
+            branch_id_var = ds.createVariable("branch_id", "i8", ("object",), zlib=True)
+            branch_id_var[:] = [o.branch_id if o.branch_id is not None else -1 for o in flat_objects]
+
+        if storm_mode_classification:
+            system_id_var = ds.createVariable("system_id", "i8", ("object",), zlib=True)
+            system_id_var[:] = [o.system_id if o.system_id is not None else -1 for o in flat_objects]
 
         if init_time is not None:
             ds.init_time = init_time.isoformat()
@@ -257,6 +265,7 @@ def write_object_file(
         ds.thresh_2 = thresh_2
         ds.area_thresh_km2 = area_thresh_km2
         ds.tracked = int(tracked)
+        ds.storm_mode_classification = int(storm_mode_classification)
         if tracked and track_bound_disp_km is not None:
             ds.track_bound_disp_km = track_bound_disp_km
 
@@ -302,6 +311,10 @@ def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
     large the file's `labels` variable is."""
     n_obj = ds.dimensions["object"].size
     tracked = bool(ds.tracked)
+    # storm_mode_classification postdates this attribute's introduction --
+    # absent on any file written before v2, same backward-compat convention
+    # as track_bound_disp_km's own hasattr check below.
+    storm_mode_classification = bool(ds.storm_mode_classification) if hasattr(ds, "storm_mode_classification") else False
 
     objects = []
     for i in range(n_obj):
@@ -313,11 +326,19 @@ def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
         centroid_rowcol = (float(ds.variables["centroid_row"][i]), float(ds.variables["centroid_col"][i]))
         age_seconds = None
         track_id = None
+        branch_id = None
         if tracked:
             raw_age = float(ds.variables["age_seconds"][i])
             age_seconds = None if np.isnan(raw_age) else raw_age
             raw_tid = int(ds.variables["track_id"][i])
             track_id = None if raw_tid == -1 else raw_tid
+            if "branch_id" in ds.variables:  # absent on any tracked file written before v2
+                raw_bid = int(ds.variables["branch_id"][i])
+                branch_id = None if raw_bid == -1 else raw_bid
+        system_id = None
+        if storm_mode_classification:
+            raw_sid = int(ds.variables["system_id"][i])
+            system_id = None if raw_sid == -1 else raw_sid
         objects.append(
             StormObject(
                 id=int(ds.variables["id"][i]),
@@ -326,6 +347,8 @@ def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
                 centroid_rowcol=centroid_rowcol,
                 age_seconds=age_seconds,
                 track_id=track_id,
+                branch_id=branch_id,
+                system_id=system_id,
                 **kwargs,
             )
         )
@@ -363,6 +386,7 @@ def read_object_file(path: str) -> ObjectFileContents:
         member_ids = _read_member_ids(ds)
         valid_times = _read_valid_times(ds)
         tracked = bool(ds.tracked)
+        storm_mode_classification = bool(ds.storm_mode_classification) if hasattr(ds, "storm_mode_classification") else False
         objects = _read_objects_table(ds)
 
         member_index = np.asarray(ds.variables["object_member_index"][:]) if "object_member_index" in ds.variables else None
@@ -380,6 +404,7 @@ def read_object_file(path: str) -> ObjectFileContents:
             valid_times=valid_times,
             init_time=datetime.fromisoformat(ds.init_time) if hasattr(ds, "init_time") else None,
             tracked=tracked,
+            storm_mode_classification=storm_mode_classification,
             thresh_1=float(ds.thresh_1),
             thresh_2=float(ds.thresh_2),
             area_thresh_km2=float(ds.area_thresh_km2),

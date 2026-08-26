@@ -1,0 +1,68 @@
+# SAMPLE CONFIG (v2 real-data spot check) -- same MPAS-vs-MRMS scenario as
+# config_sample_mpas.yaml, but with BOTH new v2 capabilities turned on for at
+# least one real case, per the storm-mode-and-splits plan's Testing section:
+#   - linear_classification.storm_mode_classification: true, with a
+#     system_boundary_threshold set below BOTH sides' own boundary_threshold
+#     (model=35.0, observations=40.0), so system_boundary_threshold=25.0 is
+#     the shared, lower "system boundary" used to decide which individually-
+#     identified objects get merged for storm-mode reclassification.
+#   - both model.track and observations.track set to true, so any object
+#     splits across consecutive real MPAS/MRMS lead times mint new branch_ids
+#     (visible in the output object files' branch_id field).
+#
+# This is a spot-check config for python_test_plot/plot_storm_mode_v2.py, not
+# used by either tutorial notebook.
+
+observations:
+  file_format: netcdf
+  var_name: refl_consv
+  lat_name: lat
+  lon_name: lon
+  interp_mrms_dir: ../sample_data/mpas_case/interp_mrms/20230501
+  object_output_dir: output/obj_mrms_mpas_sample_v2
+  boundary_threshold: 40.0
+  max_value_threshold: 45.0
+  area_threshold_km2: 108.0
+  mask: none
+  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise branch_id
+  track_distance_km: 0.0
+  file_grouping: member_series     # one consolidated, time-ordered file -- needed for tracking to link across times
+
+model:
+  input_dir: ../sample_data/mpas_case/mpas_mem1
+  member_subdirs: false
+  file_pattern: "*_f00[1-3].nc"
+  object_output_dir: output/obj_mpas_sample_v2
+  file_format: netcdf
+  var_name: refl10cm_max
+  lat_name: latitude
+  lon_name: longitude
+  init_attr: initializationTime
+  lead_attr: forecastHour
+  lead_units: hours
+  init_format: "%Y%m%d%H"
+  boundary_threshold: 35.0
+  max_value_threshold: 40.0
+  area_threshold_km2: 108.0
+  mask: none
+  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise branch_id
+  track_distance_km: 0.0
+  file_grouping: member_series
+
+matching:
+  truth_object_dir: output/obj_mrms_mpas_sample_v2
+  forecast_object_dir: output/obj_mpas_sample_v2
+  output_dir: output/matches_mpas_sample_v2
+  file_pattern: "*.nc"
+  max_boundary_disp_km: 40.0
+  max_centroid_disp_km: 40.0
+  ti_threshold: 0.2
+  max_time_offset_minutes: 5.0
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0
+  storm_mode_classification: true          # v2: on for this spot-check config
+  system_boundary_threshold: 25.0          # below both sides' own boundary_threshold (35.0/40.0)

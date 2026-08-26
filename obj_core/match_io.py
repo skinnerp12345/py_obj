@@ -27,7 +27,12 @@ _MATCH_FLOAT_FIELDS = [
 _MATCH_REQUIRED_INT_FIELDS = ["truth_id", "forecast_id"]  # always int, -1 = not applicable
 # truth_is_linear/forecast_is_linear: 0=cellular, 1=mixed, 2=linear -- -1
 # sentinel for None (not applicable) remains safe/distinct from all 3 values.
-_MATCH_OPTIONAL_INT_FIELDS = ["truth_is_linear", "forecast_is_linear"]  # None when not applicable
+# truth_system_id/forecast_system_id: only set when storm_mode_classification
+# was enabled at identification time (v2) -- -1 sentinel for None otherwise,
+# same convention.
+_MATCH_OPTIONAL_INT_FIELDS = [
+    "truth_is_linear", "forecast_is_linear", "truth_system_id", "forecast_system_id",
+]  # None when not applicable
 
 
 @dataclass

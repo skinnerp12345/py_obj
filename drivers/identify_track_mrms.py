@@ -57,7 +57,8 @@ def run_one_case(config_path: str) -> list[str]:
     print(
         f"Identifying objects: boundary_threshold={obs.boundary_threshold}, "
         f"max_value_threshold={obs.max_value_threshold}, area_threshold_km2={obs.area_threshold_km2}, "
-        f"track={obs.track}, file_grouping={obs.file_grouping}"
+        f"track={obs.track}, file_grouping={obs.file_grouping}, "
+        f"storm_mode_classification={linear.storm_mode_classification}"
     )
 
     return run_object_id_series(
@@ -72,6 +73,8 @@ def run_one_case(config_path: str) -> list[str]:
         linear_length_thresh_km=linear.linear_length_threshold_km,
         mixed_eccentricity_thresh=linear.mixed_eccentricity_threshold,
         mixed_length_thresh_km=linear.mixed_length_threshold_km,
+        storm_mode_classification=linear.storm_mode_classification,
+        system_boundary_thresh=linear.system_boundary_threshold,
     )
 
 

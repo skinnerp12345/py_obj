@@ -2,18 +2,25 @@
 object ID/tracking, model object ID/tracking, matching) plus the shared
 linear-classification thresholds.
 
+Each YAML config file this module reads functions like a **namelist**
+familiar from NWP models (WRF, MPAS): one flat set of named parameters per
+section, no code changes needed to adjust a run.
+
 Optional, additive convenience layer -- identify_objects()/run_object_id_series()/
 masking functions keep taking plain arguments and stay independently callable from
 a notebook or one-off script. This module only turns a YAML file into plain
 dataclasses; it never calls into obj_core itself.
 
-One config file, five independently OPTIONAL top-level sections
-(interpolation/observations/model/matching/linear_classification). A user
-populates only the sections relevant to their problem; each driver script
-(python_obj/drivers/) reads only the section(s) it needs and calls
-require_section() to fail loudly if a section IT needs is missing -- a
-section absent from the YAML is not itself an error, since a different
-driver may not need it at all.
+One config file, several independently OPTIONAL top-level sections
+(interpolation/observations/model/matching/linear_classification/fetch_mrms/
+histogram_observations/histogram_model). A user populates only the sections
+relevant to their problem; each driver script (python_obj/drivers/) reads
+only the section(s) it needs and calls require_section() to fail loudly if a
+section IT needs is missing -- a section absent from the YAML is not itself
+an error, since a different driver may not need it at all. See
+python_obj/configs/CONFIG_REFERENCE.md for a field-by-field reference of
+every section, and python_obj/configs/config_example_*.yaml for one
+single-purpose example config per driver.
 
 Deliberately flat within each section, not per-model-named: `observations`/
 `model` each hold exactly one active recipe, not a dict of named presets (no
@@ -280,6 +287,16 @@ class LinearClassificationConfig:
     linear_length_threshold_km: float
     mixed_eccentricity_threshold: float
     mixed_length_threshold_km: float
+    # Storm-mode system merging (v2, opt-in, default off -- v1's per-object-only
+    # classification is unchanged unless explicitly enabled). When True, objects
+    # sharing one connected region at system_boundary_threshold (a THIRD, lower
+    # dBZ threshold than thresh_1/thresh_2) are merged for classification
+    # purposes: linear/mixed/cellular is decided from the union of their own
+    # pixel footprints, then applied to every constituent object, which also
+    # gets a shared system_id. system_boundary_threshold is required whenever
+    # storm_mode_classification is True (see identify_objects()).
+    storm_mode_classification: bool = False
+    system_boundary_threshold: float | None = None
 
 
 @dataclass
@@ -445,14 +462,15 @@ def _resolve_paths(obj, path_fields: tuple[str, ...], base_dir: str) -> None:
 
 
 def load_config(path: str) -> Config:
-    """Parse a YAML config file into a Config. Every section is OPTIONAL --
-    a section absent from the YAML yields None on the returned Config, not
-    an error (drivers that need a section call require_section() themselves).
-    A section that IS present is still validated for its own required fields,
-    exactly as before -- "optional at the top level" and "validated once
-    present" are independent behaviors. Raises a clear ValueError naming the
-    missing section/field for a section that IS present but incomplete,
-    rather than a generic KeyError or a silent guess.
+    """Parse a YAML namelist-style config file into a Config. Every section
+    is OPTIONAL -- a section absent from the YAML yields None on the
+    returned Config, not an error (drivers that need a section call
+    require_section() themselves). A section that IS present is still
+    validated for its own required fields, exactly as before -- "optional at
+    the top level" and "validated once present" are independent behaviors.
+    Raises a clear ValueError naming the missing section/field for a section
+    that IS present but incomplete, rather than a generic KeyError or a
+    silent guess.
     """
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
@@ -562,11 +580,20 @@ def load_config(path: str) -> Config:
             ("linear_eccentricity_threshold", "linear_length_threshold_km",
              "mixed_eccentricity_threshold", "mixed_length_threshold_km"),
         )
+        storm_mode_classification = linear_section.get("storm_mode_classification", False)
+        if storm_mode_classification and linear_section.get("system_boundary_threshold") is None:
+            raise ValueError(
+                "linear_classification: storm_mode_classification is True but system_boundary_threshold "
+                "is not set -- a system-boundary dBZ threshold is required whenever storm-mode "
+                "classification is enabled."
+            )
         linear_classification = LinearClassificationConfig(
             linear_eccentricity_threshold=linear_section["linear_eccentricity_threshold"],
             linear_length_threshold_km=linear_section["linear_length_threshold_km"],
             mixed_eccentricity_threshold=linear_section["mixed_eccentricity_threshold"],
             mixed_length_threshold_km=linear_section["mixed_length_threshold_km"],
+            storm_mode_classification=storm_mode_classification,
+            system_boundary_threshold=linear_section.get("system_boundary_threshold"),
         )
 
     fetch_mrms = None
