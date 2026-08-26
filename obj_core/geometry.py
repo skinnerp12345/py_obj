@@ -1,28 +1,27 @@
 """Physical (km-space) geometry helpers.
 
-Fixes a real latent bug in python_base/obj_cbook.py: `calc_centroid_dist`/
-`calc_boundary_dist` operate directly on `regionprops` pixel-index coordinates,
-relying on the caller pre-dividing the paper's 40 km / 108 km^2 thresholds by a
-single scalar `dx` to convert to "pixel units". That is only correct on a
-uniform, isotropic grid. MRMS's native 0.01-degree lat/lon grid is not:
-km-per-gridpoint-in-longitude shrinks with cos(latitude), so it differs by
-roughly 35% between 20N and 55N.
+Fixes a real latent anisotropy bug present in a common legacy approach to
+this problem: computing centroid/boundary distances directly on
+`regionprops` pixel-index coordinates, relying on the caller pre-dividing a
+distance/area threshold by a single scalar `dx` to convert to "pixel units".
+That is only correct on a uniform, isotropic grid. MRMS's native 0.01-degree
+lat/lon grid is not: km-per-gridpoint-in-longitude shrinks with
+cos(latitude), so it differs by roughly 35% between 20N and 55N.
 
 The fix: project lat/lon once per grid onto a physical x/y plane (km), and do
-all distance/area math there instead of in pixel-index space. `calc_ti`/
-`calc_ti_area_ratio` in obj_cbook.py are NOT changed here -- their control flow
-already just consumes whatever centroid/coords/area values they're handed, so a
-later step (object matching) reuses them unchanged by converting each object's
-centroid/coords/area to km-space with these primitives before calling them.
+all distance/area math there instead of in pixel-index space. The Total
+Interest scoring formula itself (see matching.py) is unaffected by this
+change -- it already just consumes whatever centroid/coords/area values it's
+handed, so object matching reuses it unchanged by converting each object's
+centroid/coords/area to km-space with these primitives before calling it.
 """
 
 import numpy as np
 import pyproj
 from scipy.spatial import distance
 
-# Spherical earth radius, matching the convention already used (but unused/dead)
-# in python_base/obj_cbook.py's convert_lat_lon -- consistent with WRF's own
-# spherical-datum assumption for the domains this method was developed against.
+# Spherical earth radius, matching the WRF model's own spherical-datum
+# assumption for the domains this method was developed against.
 EARTH_RADIUS_M = 6370000.0
 
 

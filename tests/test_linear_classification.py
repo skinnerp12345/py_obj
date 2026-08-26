@@ -1,6 +1,7 @@
-"""Linear vs. cellular object classification, adapted from
-python_base/QLCS_Obj_ID.py (simplified to one eccentricity+length threshold
-combination, computed in physical km-space rather than pixel-index space).
+"""Linear vs. cellular object classification: one eccentricity+length
+threshold combination per shape tier, computed in physical km-space rather
+than pixel-index space (see obj_core/geometry.py's anisotropy-fix
+docstring).
 
 Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_linear_classification.py -v -s
 """

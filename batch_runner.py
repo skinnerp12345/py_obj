@@ -7,12 +7,10 @@ as run_batch_interpolation's file-level Pool, just one level up (case-level
 instead of file-level), and just as generic across drivers, so it lives here
 rather than being reimplemented per driver.
 
-Generalizes the legacy python_base/wofs_obj_match_wrapper_*.py pattern
-(multiprocessing.Pool.apply_async over a hardcoded case_ids list, one
-subprocess per case) into an in-process Pool.map over a plain callable, with
-no hardcoded paths/case lists baked in here -- case_specs is always supplied
-by the caller (e.g. a list of per-case config file paths), never discovered
-via a directory-naming convention, consistent with this library's existing
+Uses an in-process Pool.map over a plain callable, with no hardcoded
+paths/case lists baked in here -- case_specs is always supplied by the
+caller (e.g. a list of per-case config file paths), never discovered via a
+directory-naming convention, consistent with this library's existing
 manifest-building principle.
 
 IMPORTANT: case_fn must be a module-level, picklable callable (not a lambda

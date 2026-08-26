@@ -3,10 +3,10 @@
 Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_batch_interpolate.py -v -s
 
 Uses the bundled python_obj/sample_data/ (3 real MRMS files, one small real
-MPAS target grid) for a fast, repeatable, self-contained check; see CLAUDE.md
-/ the plan file for the larger 10-day run used to validate this at realistic
-scale against the full local test_mrms/ (too slow, and too large to bundle,
-for a routine pytest run).
+MPAS target grid) for a fast, repeatable, self-contained check -- a separate,
+larger multi-day run against a full local MRMS archive was used to validate
+this at realistic scale (too slow, and too large to bundle, for a routine
+pytest run).
 """
 
 import glob

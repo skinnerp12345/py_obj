@@ -1,11 +1,10 @@
 """Standalone script: build one composite-reflectivity (or any configured
 variable) distribution histogram per YYYYMMDD day of already-interpolated
-MRMS. Generalizes python_base/mrms_dz_histogram_base.py -- configurable bins/
-variable, and (new) preserves one histogram slice per input file (tagged
-with its real valid_time) inside each day's output file, rather than
-collapsing straight to one flat total -- this is what lets
+MRMS. Configurable bins/variable, and preserves one histogram slice per
+input file (tagged with its real valid_time) inside each day's output file,
+rather than collapsing straight to one flat total -- this is what lets
 python_obj.histogram.aggregate later rebuild subsets (e.g. an hour-of-day
-climatology) that the original script's output could never support.
+climatology) from the same output.
 
 A thin driver over python_obj.histogram; does not modify anything else in
 python_obj/. Configured entirely via the shared python_obj/configs/config.yaml

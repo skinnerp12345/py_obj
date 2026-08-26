@@ -1,13 +1,13 @@
 """CONUS domain masking: exclude grid cells too far outside the US border to have
 reliable MRMS radar coverage.
 
-Rule (confirmed with the user, 2026-07-07): grid cells >100 km OUTSIDE the US
-border are masked (excluded). Interior cells are never masked regardless of
-distance from the border; cells outside but within the 100 km buffer are kept,
-since near-border radar coverage can still reach a short distance beyond the
-border. Two presets: the buffer rule alone over the full CONUS, and the same
-rule plus everything west of a longitude cutoff (eastern ~2/3 CONUS, where
-radar coverage is generally more reliable in less mountainous terrain).
+Rule: grid cells >100 km outside the US border are masked (excluded).
+Interior cells are never masked regardless of distance from the border;
+cells outside but within the 100 km buffer are kept, since near-border radar
+coverage can still reach a short distance beyond the border. Two presets:
+the buffer rule alone over the full CONUS, and the same rule plus everything
+west of a longitude cutoff (eastern ~2/3 CONUS, where radar coverage is
+generally more reliable in less mountainous terrain).
 """
 
 from functools import lru_cache

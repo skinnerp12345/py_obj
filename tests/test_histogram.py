@@ -1,6 +1,5 @@
-"""Histogram-capability validation: generalizes python_base's
-mrms_dz_histogram_*.py/wofs_dz_histogram_*.py into python_obj.histogram +
-the build_histogram_{mrms,model}.py/aggregate_histograms.py drivers.
+"""Histogram-capability validation: python_obj.histogram plus the
+build_histogram_{mrms,model}.py/aggregate_histograms.py drivers.
 
 Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_histogram.py -v -s
 """

@@ -15,12 +15,11 @@ batch_config.py's cases: section), fetches EVERY MRMS file found for each
 requested day, no model files or valid-time matching involved at all.
 
 Both modes reuse the same listing (_list_mrms_day)/download (_download_file)
-machinery and write fetched files in the exact directory/filename convention
-already used by test_mrms/ and already consumed unmodified by
-discover_mrms_files()/interpolate_mrms.py -- <output_dir>/<YYYYMMDD>/
-<original S3 filename>, no renaming -- so fetched output can be used
-directly as an 'interpolation.raw_mrms_dir' with zero downstream changes,
-regardless of which mode produced it.
+machinery and write fetched files in the same directory/filename convention
+discover_mrms_files()/interpolate_mrms.py already consume unmodified --
+<output_dir>/<YYYYMMDD>/<original S3 filename>, no renaming -- so fetched
+output can be used directly as an 'interpolation.raw_mrms_dir' with zero
+downstream changes, regardless of which mode produced it.
 
 The bucket is public; no AWS credentials or SDK needed, just plain HTTPS
 (the `requests` library). Configured entirely via the shared

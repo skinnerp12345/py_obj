@@ -49,8 +49,9 @@ def _select_data_slice(
       3. neither given -- best-effort singleton squeeze only; if more than 2
          real dimensions remain, RAISE (naming the shape) instead of
          silently keeping index 0 -- this is the fix for a real bug found
-         against test_wofs/*.nc, where the old _squeeze_leading silently
-         discarded 17 of 18 real ensemble members.
+         against a real multi-member ensemble file with a stacked member
+         dimension (e.g. WoFS's comp_dz(ne=18, lat, lon)), where the old
+         _squeeze_leading silently discarded 17 of the 18 real members.
     """
     if extra_dim_selector_fn is not None:
         result = np.asarray(extra_dim_selector_fn(data))
@@ -263,7 +264,7 @@ def load_model_netcdf(
     extra_dim_selector_fn: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> GriddedField:
     """Load one gridded data field from a model output NetCDF file with 2D lat/lon
-    coordinates (validated against test_mpas/*.nc's `refl10cm_max`).
+    coordinates (validated against real MPAS output's `refl10cm_max`).
 
     valid_time derivation (see _resolve_valid_time() for the full precedence
     order): if not given explicitly, tries valid_time_fn, then valid_time_var

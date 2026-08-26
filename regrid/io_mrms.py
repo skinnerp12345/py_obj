@@ -58,9 +58,9 @@ def load_mrms(filepath: str, file_format: str | None = None, **kwargs) -> MRMSFi
 
 
 # MRMS composite reflectivity products carry two distinct large-magnitude negative
-# sentinel values, confirmed against real test data and by the user (domain expert,
-# 2026-07-06) -- NOT trust the GRIB2 header's own `missingValue` key for this product
-# family (it reads a meaningless 9999 on real MRMS_MergedReflectivityQCComposite files):
+# sentinel values, confirmed against real data -- do NOT trust the GRIB2 header's
+# own `missingValue` key for this product family (it reads a meaningless 9999 on
+# real MRMS_MergedReflectivityQCComposite files):
 #
 #   -999  "no observational coverage" (_FillValue convention) -- must be EXCLUDED from
 #          any averaging/regridding, not treated as a data value.
@@ -148,9 +148,7 @@ def load_mrms_netcdf(
     valid_time: datetime | None = None,
 ) -> MRMSField:
     """Load pre-interpolated MRMS NetCDF -- e.g. `python_obj.regrid.batch_interpolate`'s
-    own output (Step 1b), which also matches the variable naming convention
-    python_base's legacy `load_mrms_old`/`load_mrms_new` already expect (`lat`,
-    `lon`, `refl_consv`).
+    own output, using variable names `lat`, `lon`, `refl_consv`.
 
     valid_time: if not given, read from the file's own `valid_time` global
     attribute (written by `write_interpolated_mrms_netcdf`, ISO-8601 format).

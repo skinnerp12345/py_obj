@@ -1,14 +1,11 @@
 """Standalone script: build one composite-reflectivity (or any configured
 variable) distribution histogram for one whole model/forecast run (every
-lead time, every member if an ensemble). Generalizes
-python_base/wofs_dz_histogram_base.py / wofs_dz_histogram_wofscast.py --
-configurable bins/variable, and (new) preserves one histogram slice per
-(member, lead-time) combination -- tagged with its real valid_time,
-lead_hours, and member_id -- inside the one output file, rather than
-collapsing everything to one flat total. This is what lets
+lead time, every member if an ensemble). Configurable bins/variable, and
+preserves one histogram slice per (member, lead-time) combination -- tagged
+with its real valid_time, lead_hours, and member_id -- inside the one output
+file, rather than collapsing everything to one flat total. This is what lets
 python_obj.histogram.aggregate later build a "day N of the forecast" subset
-from a single multi-day run, which the original script's output could never
-support.
+from a single multi-day run.
 
 A thin driver over python_obj.histogram; does not modify anything else in
 python_obj/. Configured entirely via the shared python_obj/configs/config.yaml

@@ -54,9 +54,10 @@ def build_model_manifest(
     the histogram driver) needs, plus a matching loader closure.
 
     member_subdirs=True: one member per immediate subdirectory of input_dir
-    matching member_subdir_pattern (member_id = subdirectory basename),
-    mirroring the real test_mpas/mem1/, test_mpas/mem2/ layout -- not parsed
-    from any filename convention, since a model's own ensemble-naming scheme
+    matching member_subdir_pattern (member_id = subdirectory basename) --
+    e.g. an input_dir with `mem1/`, `mem2/` subdirectories, one ensemble
+    member per subdirectory. Member id is never parsed from any filename
+    convention, since a model's own ensemble-naming scheme
     is the caller's business, not this pipeline's. member_subdir_pattern
     (default "*", i.e. every subdirectory) exists because a real archive's
     input_dir can hold non-member sibling directories alongside the real

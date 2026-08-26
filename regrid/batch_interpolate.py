@@ -5,8 +5,8 @@ Standalone capability, usable with no downstream object ID/matching applied --
 e.g. to pre-compute and store interpolated MRMS fields for reuse, or as a
 deliverable in its own right.
 
-Multiprocessing design (see the plan file / CLAUDE.md for the full rationale):
-the source (native MRMS) grid and target (model) grid are identical across
+Multiprocessing design rationale: the source (native MRMS) grid and target
+(model) grid are identical across
 every file in a batch, so there is exactly ONE ESMF regridder to build for an
 entire run, not one per file, and not one per worker call:
   - the main process pre-warms the on-disk weight cache once, serially, before
@@ -54,8 +54,8 @@ class BatchSummary:
 
 
 def discover_mrms_files(input_dir: str, pattern: str = "**/*.grib2*") -> list[str]:
-    """Recursively find MRMS files under input_dir (handles the YYYYMMDD/ per-day
-    subdirectory layout used by test_mrms/, as well as a flat directory)."""
+    """Recursively find MRMS files under input_dir (handles a YYYYMMDD/ per-day
+    subdirectory layout, as well as a flat directory)."""
     matches = glob.glob(os.path.join(input_dir, pattern), recursive=True)
     files = sorted(f for f in matches if os.path.isfile(f))
     return files
@@ -98,10 +98,9 @@ def write_interpolated_mrms_netcdf(
     fill_value: float = MRMS_MISSING_VALUE,
     source_file: str | None = None,
 ) -> None:
-    """Write lat/lon/<varname> to a NetCDF file, matching the variable naming
-    convention python_base/obj_cbook.py's load_mrms_new() already expects
-    ('lat', 'lon', and a reflectivity variable), so these outputs are directly
-    readable by the existing legacy pipeline too."""
+    """Write lat/lon/<varname> to a NetCDF file, using the same variable
+    naming convention this library's own load_mrms_netcdf() (regrid/io_mrms.py)
+    expects ('lat', 'lon', and a reflectivity variable)."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     ny, nx = data2d.shape

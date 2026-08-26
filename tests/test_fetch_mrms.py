@@ -1,10 +1,9 @@
 """Validation of drivers/fetch_mrms.py -- both the pure date-expansion helper
-and, since this driver had NO tests at all before this file, real end-to-end
-checks against the actual public noaa-mrms-pds S3 bucket for both modes
-(model-driven and date-driven). These make real network calls (no mocking
-library exists in this project) -- kept small/bounded via max_files so they
-stay fast, matching this project's established "validate against real data"
-convention for this exact bucket (see CLAUDE.md history).
+and real end-to-end checks against the actual public noaa-mrms-pds S3 bucket
+for both modes (model-driven and date-driven). These make real network calls
+(no mocking library is used in this project) -- kept small/bounded via
+max_files so they stay fast, matching this project's established "validate
+against real data" convention.
 
 Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_fetch_mrms.py -v -s
 """
