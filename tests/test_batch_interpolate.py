@@ -1,8 +1,8 @@
 """Step 1b validation: batch MRMS interpolation with multiprocessing.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_batch_interpolate.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_batch_interpolate.py -v -s
 
-Uses the bundled python_obj/sample_data/ (3 real MRMS files, one small real
+Uses the bundled py_obj/sample_data/ (3 real MRMS files, one small real
 MPAS target grid) for a fast, repeatable, self-contained check -- a separate,
 larger multi-day run against a full local MRMS archive was used to validate
 this at realistic scale (too slow, and too large to bundle, for a routine
@@ -17,11 +17,11 @@ import netCDF4
 import numpy as np
 import pytest
 
-from python_obj.regrid import build_corner_spacing_grid, discover_mrms_files, load_mrms_grib2, make_output_path, run_batch_interpolation
-from python_obj.regrid.grid_spec import GridSpec, crop_to_bbox
-from python_obj.regrid.io_grid import load_target_grid
-from python_obj.regrid.io_mrms import MRMS_MISSING_VALUE, clip_near_zero_sentinel
-from python_obj.regrid.regridder import build_conservative_regridder, regrid_field
+from py_obj.regrid import build_corner_spacing_grid, discover_mrms_files, load_mrms_grib2, make_output_path, run_batch_interpolation
+from py_obj.regrid.grid_spec import GridSpec, crop_to_bbox
+from py_obj.regrid.io_grid import load_target_grid
+from py_obj.regrid.io_mrms import MRMS_MISSING_VALUE, clip_near_zero_sentinel
+from py_obj.regrid.regridder import build_conservative_regridder, regrid_field
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 INPUT_DIR = os.path.join(SAMPLE_DATA_DIR, "mpas_case", "mrms")

@@ -59,7 +59,7 @@ def total_interest_area_ratio(ti: float, area1_km2: float, area2_km2: float) -> 
 
 _MATCH_RECORD_SIDE_FIELDS = [
     "area_km2", "max_intensity", "mean_intensity", "is_linear", "centroid_lat", "centroid_lon",
-    "solidity", "major_axis_length", "minor_axis_length", "eccentricity", "system_id",
+    "solidity", "major_axis_length", "minor_axis_length", "eccentricity", "system_id", "age_seconds",
 ]
 
 
@@ -84,6 +84,7 @@ class MatchRecord:
     truth_minor_axis_length: float | None = None
     truth_eccentricity: float | None = None
     truth_system_id: int | None = None  # only set when storm_mode_classification was enabled at ID time
+    truth_age_seconds: float | None = None  # only set when the truth series was tracked at ID time
 
     forecast_area_km2: float | None = None
     forecast_max_intensity: float | None = None
@@ -96,6 +97,7 @@ class MatchRecord:
     forecast_minor_axis_length: float | None = None
     forecast_system_id: int | None = None  # only set when storm_mode_classification was enabled at ID time
     forecast_eccentricity: float | None = None
+    forecast_age_seconds: float | None = None  # only set when the forecast series was tracked at ID time
 
 
 def _record_from_objects(

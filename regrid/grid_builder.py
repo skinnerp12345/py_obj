@@ -16,7 +16,7 @@ from .grid_spec import GridSpec
 
 # Spherical earth radius -- duplicated from obj_core.geometry's own constant
 # of the same name/value rather than imported, to avoid a real circular
-# import: obj_core/__init__.py -> manifest.py -> `from python_obj.regrid
+# import: obj_core/__init__.py -> manifest.py -> `from py_obj.regrid
 # import ...` -> (this module, if it imported obj_core back) -> obj_core
 # again. regrid/ and obj_core/ are siblings with a one-directional
 # dependency (obj_core depends on regrid, never the reverse); importing

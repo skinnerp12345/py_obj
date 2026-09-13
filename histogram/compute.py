@@ -1,6 +1,6 @@
 """Core histogram computation: one configurable-bins/configurable-variable
 function for building a reflectivity-value distribution. Takes a plain array
-(already loaded via python_obj.regrid's own loaders) -- no file I/O here,
+(already loaded via py_obj.regrid's own loaders) -- no file I/O here,
 mirroring this codebase's existing identify_objects()-vs-run_object_id_series()
 split between core algorithm and pipeline/batch driver.
 """

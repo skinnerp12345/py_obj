@@ -3,7 +3,7 @@ AWS S3 archive, in either of two independent modes.
 
 Model-driven mode (the original mode): for each file in a directory of model
 output (e.g. WoFS, which has no local matching MRMS data), derives its
-valid_time (via python_obj.regrid.read_valid_time_only's flexible mechanism
+valid_time (via py_obj.regrid.read_valid_time_only's flexible mechanism
 -- a ready-made valid_time string attribute, or init+lead arithmetic,
 depending on the model), lists that day's MRMS files in the public archive
 (one HTTPS request per distinct day, cached), finds the nearest available
@@ -23,12 +23,12 @@ downstream changes, regardless of which mode produced it.
 
 The bucket is public; no AWS credentials or SDK needed, just plain HTTPS
 (the `requests` library). Configured entirely via the shared
-python_obj/configs/config.yaml (its 'fetch_mrms:' section).
+py_obj/configs/config.yaml (its 'fetch_mrms:' section).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/fetch_mrms.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/fetch_mrms.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import glob
@@ -44,9 +44,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import FetchMrmsConfig, load_config, require_section
-from python_obj.regrid import read_valid_time_only
-from python_obj.time_utils import nearest_within_tolerance
+from py_obj.config import FetchMrmsConfig, load_config, require_section
+from py_obj.regrid import read_valid_time_only
+from py_obj.time_utils import nearest_within_tolerance
 
 _S3_NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 _DATE_FORMAT = "%Y%m%d"  # matches batch_config.py's _DEFAULT_DATE_FORMAT

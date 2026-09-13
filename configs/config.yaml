@@ -1,6 +1,6 @@
 # Unified config for the whole pipeline family: interpolation, MRMS object
 # ID/tracking, model/forecast object ID/tracking, and matching. Loaded via
-# python_obj.config.load_config(path) -> Config.
+# py_obj.config.load_config(path) -> Config.
 #
 # Functions like a namelist familiar from NWP models (WRF, MPAS) -- one flat
 # set of named parameters per section, no code changes needed to adjust a
@@ -8,7 +8,7 @@
 # path when none is given on the command line.
 #
 # Every section below is INDEPENDENTLY OPTIONAL -- populate only the ones
-# relevant to your problem. A driver script (python_obj/drivers/) reads only
+# relevant to your problem. A driver script (py_obj/drivers/) reads only
 # the section(s) it needs and raises a clear error if a section IT requires
 # is missing; omitting a section this driver doesn't use is never an error.
 # See configs/config_smoketest.yaml for a bundled-sample-data example that

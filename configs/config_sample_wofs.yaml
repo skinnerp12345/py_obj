@@ -1,17 +1,17 @@
 # SAMPLE CONFIG -- real WoFS (Warn-on-Forecast System) end-to-end scenario,
-# used by python_obj/notebooks/wofs_tutorial.ipynb: fetch matching MRMS
+# used by py_obj/notebooks/wofs_tutorial.ipynb: fetch matching MRMS
 # observations from AWS, interpolate them onto the WoFS grid, identify
 # objects in WoFS (no tracking, per-member -- each file holds all 18 members
 # stacked as a real array dimension, comp_dz(ne=18, lat, lon), not one file
 # per member, so stacked_members: true is required -- see
-# model.stacked_members in python_obj/drivers/README.md for the full
+# model.stacked_members in py_obj/drivers/README.md for the full
 # explanation), identify+track objects in the interpolated MRMS series, then
 # match the two. See also configs/config_sample_mpas.yaml, the complementary
 # sample for a single-member MPAS forecast where the interpolated MRMS is
 # already available (no fetch/interpolate needed).
 #
 # Model input (3 real, trimmed WoFS lead times) is bundled in
-# python_obj/sample_data/wofs_case/ so this works from a fresh clone with no
+# py_obj/sample_data/wofs_case/ so this works from a fresh clone with no
 # external test_wofs/ -- but fetch_mrms: still performs a REAL live AWS fetch
 # (internet access required), by design: that live-fetch step is itself part
 # of what this notebook demonstrates, not something to fake or skip. (A

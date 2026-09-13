@@ -7,8 +7,8 @@
 #     the shared, lower "system boundary" used to decide which individually-
 #     identified objects get merged for storm-mode reclassification.
 #   - both model.track and observations.track set to true, so any object
-#     splits across consecutive real MPAS/MRMS lead times mint new branch_ids
-#     (visible in the output object files' branch_id field).
+#     splits across consecutive real MPAS/MRMS lead times mint new split_ids
+#     (visible in the output object files' split_id field, "<track_id>:n").
 #
 # This is a spot-check config for python_test_plot/plot_storm_mode_v2.py, not
 # used by either tutorial notebook.
@@ -24,7 +24,7 @@ observations:
   max_value_threshold: 45.0
   area_threshold_km2: 108.0
   mask: none
-  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise branch_id
+  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise split_id
   track_distance_km: 0.0
   file_grouping: member_series     # one consolidated, time-ordered file -- needed for tracking to link across times
 
@@ -45,7 +45,7 @@ model:
   max_value_threshold: 40.0
   area_threshold_km2: 108.0
   mask: none
-  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise branch_id
+  track: true                     # v2: enabled here (was false in config_sample_mpas.yaml) to exercise split_id
   track_distance_km: 0.0
   file_grouping: member_series
 

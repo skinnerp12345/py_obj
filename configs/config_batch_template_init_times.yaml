@@ -65,7 +65,7 @@ histogram_model:
   # library defaults (-20 to 80 dBZ by 0.2, edge_trim=7, no clipping) fit fine.
   # One histogram file per init_time (not merged across the day's cycles) --
   # if a combined day-level distribution is wanted, sum the resulting files
-  # afterward with python_obj.histogram.aggregate.sum_histograms().
+  # afterward with py_obj.histogram.aggregate.sum_histograms().
 
 linear_classification:
   linear_eccentricity_threshold: 0.8

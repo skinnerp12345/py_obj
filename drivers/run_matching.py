@@ -5,14 +5,14 @@ however) into hits/misses/false_alarms/truth_extras/forecast_extras.
 No identification/tracking here (see identify_track_mrms.py or
 identify_track_model.py for that); this only ever reads pre-existing object
 files and matches between them. A thin driver over
-python_obj.obj_core.run_matching_series; does not modify anything else in
-python_obj/. Configured entirely via the shared python_obj/configs/config.yaml (its
+py_obj.obj_core.run_matching_series; does not modify anything else in
+py_obj/. Configured entirely via the shared py_obj/configs/config.yaml (its
 'matching:' section).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import glob
@@ -23,8 +23,8 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
-from python_obj.obj_core import MatchingSummary, run_matching_series
+from py_obj.config import load_config, require_section
+from py_obj.obj_core import MatchingSummary, run_matching_series
 
 
 def _discover(directory: str, pattern: str, label: str) -> list[str]:

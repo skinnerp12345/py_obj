@@ -2,18 +2,18 @@
 already-interpolated MRMS data.
 
 Reads the interpolated MRMS NetCDF files produced by interpolate_mrms.py
-(same format as python_obj's own batch interpolation) and writes
+(same format as py_obj's own batch interpolation) and writes
 self-contained object files, one per available output time by default
 (file_grouping -- the natural shape for observations, which have no
 member/ensemble concept). A thin driver over
-python_obj.obj_core.run_object_id_series; does not modify anything else in
-python_obj/. Configured entirely via the shared python_obj/configs/config.yaml (its
+py_obj.obj_core.run_object_id_series; does not modify anything else in
+py_obj/. Configured entirely via the shared py_obj/configs/config.yaml (its
 'observations:' and 'linear_classification:' sections).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_mrms.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_mrms.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 Requires observations.interp_mrms_dir to already be populated (run
 interpolate_mrms.py first).
 """
@@ -26,9 +26,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
-from python_obj.obj_core import SeriesEntry, conus_mask, conus_mask_east, run_object_id_series
-from python_obj.regrid import load_mrms_netcdf
+from py_obj.config import load_config, require_section
+from py_obj.obj_core import SeriesEntry, conus_mask, conus_mask_east, run_object_id_series
+from py_obj.regrid import load_mrms_netcdf
 
 
 def run_one_case(config_path: str) -> list[str]:

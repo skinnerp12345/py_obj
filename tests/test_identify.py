@@ -1,6 +1,6 @@
 """Step 4 validation: object identification + optional in-time tracking.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_identify.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_identify.py -v -s
 """
 
 import glob
@@ -11,7 +11,7 @@ import netCDF4
 import numpy as np
 import pytest
 
-from python_obj.obj_core import (
+from py_obj.obj_core import (
     IdentificationResult,
     SeriesEntry,
     StormObject,
@@ -24,7 +24,7 @@ from python_obj.obj_core import (
     track_objects_incremental,
     write_object_file,
 )
-from python_obj.regrid import load_mrms_netcdf, load_model_netcdf
+from py_obj.regrid import load_mrms_netcdf, load_model_netcdf
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 MPAS_DIR = os.path.join(SAMPLE_DATA_DIR, "mpas_case", "mpas_mem1")
@@ -88,17 +88,17 @@ def test_tracking_correctness_synthetic_series():
 
     d0 = np.zeros((60, 60)); d0[10:15, 10:15] = 50.0
     labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
-    tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
+    tracked0, nid, nsplit = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1, next_split_n={})
 
     d1 = np.zeros((60, 60)); d1[10:15, 11:16] = 50.0  # shifted, overlapping -> persists
     labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
     t1 = t0 + timedelta(minutes=5)
-    tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+    tracked1, nid, nsplit = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid, next_split_n=nsplit)
 
     d2 = np.zeros((60, 60)); d2[45:48, 45:48] = 50.0  # unrelated new object elsewhere
     labels2, objs2 = identify_objects(d2, gg, 20.0, 30.0, 1.0)
     t2 = t1 + timedelta(minutes=5)
-    tracked2, nid = track_objects_incremental(tracked1, labels1, t1, objs2, labels2, t2, gg, next_track_id=nid)
+    tracked2, nid, nsplit = track_objects_incremental(tracked1, labels1, t1, objs2, labels2, t2, gg, next_track_id=nid, next_split_n=nsplit)
 
     print(f"\n[id-check3] t0={[(o.age_seconds, o.track_id) for o in tracked0]} "
           f"t1={[(o.age_seconds, o.track_id) for o in tracked1]} "
@@ -127,9 +127,9 @@ def test_tracking_genericity_obs_vs_forecast_labels():
 
     def run_series():
         labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
-        tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
+        tracked0, nid, nsplit = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1, next_split_n={})
         labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
-        tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+        tracked1, nid, nsplit = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid, next_split_n=nsplit)
         return [(o.age_seconds, o.track_id) for o in tracked1]
 
     obs_result = run_series()      # "obs" -- but nothing in the call distinguishes it
@@ -584,7 +584,7 @@ def test_init_snapshot_real_data_matches_full_mode(tmp_path):
 
 def test_identify_track_mrms_file_pattern_excludes_non_data_file(tmp_path):
     import shutil
-    from python_obj.drivers.identify_track_mrms import run_one_case
+    from py_obj.drivers.identify_track_mrms import run_one_case
 
     real_files = sorted(glob.glob(os.path.join(INTERP_MRMS_DIR, "*.nc")))
     assert real_files, "expected real bundled interpolated-MRMS files"
@@ -733,11 +733,13 @@ def test_storm_mode_classification_singleton_system_is_a_no_op():
     assert objects_on[0].is_linear == objects_off[0].is_linear
 
 
-# --- Check 12: split-branch lineage -- one object splits into two, each gets
-# a brand-new branch_id while retaining the shared track_id; an unsplit
-# continuation afterward inherits its own branch_id unchanged.
+# --- Check 12: split lineage -- one object splits into two of DIFFERENT
+# sizes; the greatest-overlap child keeps the inherited split_id unchanged,
+# the other gets a freshly minted "<track_id>:n"; a second, later split
+# (on the still-continuing branch) proves the per-track counter is shared
+# and monotonic, not reset or scoped per-branch.
 
-def test_tracking_split_mints_new_branch_ids_and_preserves_track_id():
+def test_tracking_split_assigns_original_split_id_to_greatest_overlap_child():
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
     t0 = datetime(2023, 5, 1, 0, 0, 0)
@@ -749,58 +751,62 @@ def test_tracking_split_mints_new_branch_ids_and_preserves_track_id():
     d0 = np.zeros((60, 60)); d0[10:35, 10:35] = 50.0
     labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
     assert len(objs0) == 1
-    tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
-    parent_track_id = tracked0[0].track_id
-    parent_branch_id = tracked0[0].branch_id
-    assert parent_track_id == parent_branch_id == 1
+    tracked0, nid, nsplit = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1, next_split_n={})
+    track_id = tracked0[0].track_id
+    assert tracked0[0].split_id == f"{track_id}:0", "at CI, split_id starts at '<track_id>:0'"
 
-    # t1: parent splits into 2 disjoint children, both inside the parent's t0
-    # footprint. Row-major label scanning guarantees child A (lower rows)
-    # gets label 1, child B (higher rows) gets label 2.
+    # t1: parent splits into 2 disjoint children of DIFFERENT sizes, both
+    # inside the parent's t0 footprint -- child A (36 px) overlaps the
+    # parent far more than child B (16 px).
     d1 = np.zeros((60, 60))
-    d1[10:14, 10:14] = 50.0   # child A
-    d1[30:34, 30:34] = 50.0   # child B
+    d1[10:16, 10:16] = 50.0   # child A -- 36 px, the greatest-overlap child
+    d1[30:34, 30:34] = 50.0   # child B -- 16 px
     labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
     assert len(objs1) == 2
-    tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+    tracked1, nid, nsplit = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid, next_split_n=nsplit)
 
-    print(f"\n[id-check12] t0: track_id={parent_track_id}, branch_id={parent_branch_id} | "
-          f"t1 (split): {[(o.id, o.track_id, o.branch_id) for o in tracked1]}")
+    print(f"\n[id-check12] t0 split_id={tracked0[0].split_id} | "
+          f"t1 (split): {[(o.id, o.area_px, o.track_id, o.split_id) for o in tracked1]}")
     assert len(tracked1) == 2
-    assert all(o.track_id == parent_track_id for o in tracked1), "lineage (track_id) must be preserved through a split"
-    branch_ids_t1 = [o.branch_id for o in tracked1]
-    assert len(set(branch_ids_t1)) == 2, "every child of a split must get its OWN distinct branch_id"
-    assert parent_branch_id not in branch_ids_t1, "no child is 'the' continuation -- neither reuses the parent's branch_id"
+    assert all(o.track_id == track_id for o in tracked1), "lineage (track_id) must be preserved through a split"
 
-    child_a = tracked1[0]  # label 1 -> rows 10-14 -> child A by construction
+    child_a = max(tracked1, key=lambda o: o.area_px)  # 36 px -- greatest overlap with the parent
+    child_b = min(tracked1, key=lambda o: o.area_px)  # 16 px
+    assert child_a.split_id == f"{track_id}:0", "the greatest-overlap child keeps the original split_id"
+    assert child_b.split_id == f"{track_id}:1", "the other child gets the next freshly-minted number"
 
-    # t2: continue ONLY child A (slightly shifted, still overlapping A's t1
-    # footprint), with no object anywhere near child B's old position --
-    # ordinary 1-parent-1-child continuation, branch_id must be inherited
-    # unchanged (not re-minted).
-    d2 = np.zeros((60, 60)); d2[10:14, 11:15] = 50.0
+    # t2: child A splits AGAIN into two further, unequal children -- proves
+    # the per-track counter is shared (not reset, not per-branch): the next
+    # new number must be ':2', not ':1' again (':1' was already used above).
+    d2 = np.zeros((60, 60))
+    d2[10:15, 10:13] = 50.0   # sub-child A1 -- 15 px, greatest overlap with child A
+    d2[10:12, 14:16] = 50.0   # sub-child A2 -- 4 px
     labels2, objs2 = identify_objects(d2, gg, 20.0, 30.0, 1.0)
-    assert len(objs2) == 1
-    tracked2, nid = track_objects_incremental(tracked1, labels1, t1, objs2, labels2, t2, gg, next_track_id=nid)
+    assert len(objs2) == 2
+    tracked2, nid, nsplit = track_objects_incremental(tracked1, labels1, t1, objs2, labels2, t2, gg, next_track_id=nid, next_split_n=nsplit)
 
-    print(f"[id-check12] t2 (continuing child A only): track_id={tracked2[0].track_id}, branch_id={tracked2[0].branch_id}")
-    assert tracked2[0].track_id == parent_track_id
-    assert tracked2[0].branch_id == child_a.branch_id, "unsplit continuation must inherit branch_id unchanged, not fork again"
+    print(f"[id-check12] t2 (child A splits again): {[(o.id, o.area_px, o.track_id, o.split_id) for o in tracked2]}")
+    assert len(tracked2) == 2
+    assert all(o.track_id == track_id for o in tracked2)
+    sub_a1 = max(tracked2, key=lambda o: o.area_px)  # 15 px
+    sub_a2 = min(tracked2, key=lambda o: o.area_px)  # 4 px
+    assert sub_a1.split_id == child_a.split_id == f"{track_id}:0", "still-continuing branch keeps its split_id"
+    assert sub_a2.split_id == f"{track_id}:2", "counter is shared across the whole track, not reset or per-branch"
 
 
 def test_tracking_no_split_and_untracked_controls():
-    """Control cases: (a) ordinary unsplit continuation keeps branch_id ==
-    track_id throughout (both minted once at CI, never re-forked); (b)
+    """Control cases: (a) ordinary unsplit continuation keeps split_id ==
+    "<track_id>:0" throughout (minted once at CI, never re-forked); (b)
     objects produced without ever calling track_objects_incremental have
-    branch_id=None, exactly as before this feature existed."""
+    split_id=None, exactly as before this feature existed."""
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
 
-    # (b) untracked -- identify_objects alone never touches branch_id/track_id
+    # (b) untracked -- identify_objects alone never touches split_id/track_id
     data = np.zeros((60, 60)); data[10:15, 10:15] = 50.0
     _, objs = identify_objects(data, gg, 20.0, 30.0, 1.0)
-    assert objs[0].branch_id is None and objs[0].track_id is None
-    print(f"\n[id-check13] untracked object: branch_id={objs[0].branch_id}, track_id={objs[0].track_id}")
+    assert objs[0].split_id is None and objs[0].track_id is None
+    print(f"\n[id-check13] untracked object: split_id={objs[0].split_id}, track_id={objs[0].track_id}")
 
     # (a) ordinary continuation, no split ever occurs
     t0 = datetime(2023, 5, 1, 0, 0, 0)
@@ -808,12 +814,12 @@ def test_tracking_no_split_and_untracked_controls():
     d0 = np.zeros((60, 60)); d0[10:15, 10:15] = 50.0
     d1 = np.zeros((60, 60)); d1[10:15, 11:16] = 50.0  # shifted, still overlapping
     labels0, objs0 = identify_objects(d0, gg, 20.0, 30.0, 1.0)
-    tracked0, nid = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1)
+    tracked0, nid, nsplit = track_objects_incremental(None, None, None, objs0, labels0, t0, gg, next_track_id=1, next_split_n={})
     labels1, objs1 = identify_objects(d1, gg, 20.0, 30.0, 1.0)
-    tracked1, nid = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid)
+    tracked1, nid, nsplit = track_objects_incremental(tracked0, labels0, t0, objs1, labels1, t1, gg, next_track_id=nid, next_split_n=nsplit)
 
-    print(f"[id-check13] t0: track_id={tracked0[0].track_id}, branch_id={tracked0[0].branch_id} | "
-          f"t1 (no split): track_id={tracked1[0].track_id}, branch_id={tracked1[0].branch_id}")
-    assert tracked0[0].track_id == tracked0[0].branch_id, "at CI, branch_id starts equal to track_id"
+    print(f"[id-check13] t0: track_id={tracked0[0].track_id}, split_id={tracked0[0].split_id} | "
+          f"t1 (no split): track_id={tracked1[0].track_id}, split_id={tracked1[0].split_id}")
+    assert tracked0[0].split_id == f"{tracked0[0].track_id}:0", "at CI, split_id starts at '<track_id>:0'"
     assert tracked1[0].track_id == tracked0[0].track_id
-    assert tracked1[0].branch_id == tracked0[0].branch_id, "no split occurred -- branch_id must stay unchanged"
+    assert tracked1[0].split_id == tracked0[0].split_id, "no split occurred -- split_id must stay unchanged"

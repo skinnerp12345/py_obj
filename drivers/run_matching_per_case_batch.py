@@ -1,5 +1,5 @@
 """Standalone script: run run_matching_per_case.py's run_one_case() across
-many forecast case files in parallel via python_obj.batch_runner.
+many forecast case files in parallel via py_obj.batch_runner.
 
 IMPORTANT (read before raising n_workers): each case's peak memory is
 dominated by decompressing one member's full label block at a time
@@ -20,10 +20,10 @@ run_all_cases_sequential's own skip_existing cannot provide, since it is
 single-process).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching_per_case_batch.py \\
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching_per_case_batch.py \\
       [config_path] [skip_existing: true|false] [n_workers]
 
-All three arguments are optional; defaults are config_path=python_obj/configs/config.yaml,
+All three arguments are optional; defaults are config_path=py_obj/configs/config.yaml,
 skip_existing=false, n_workers=1.
 """
 
@@ -35,9 +35,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.batch_runner import run_cases_in_parallel
-from python_obj.config import load_config, require_section
-from python_obj.drivers.run_matching_per_case import discover_forecast_cases, expected_output_path, run_one_case
+from py_obj.batch_runner import run_cases_in_parallel
+from py_obj.config import load_config, require_section
+from py_obj.drivers.run_matching_per_case import discover_forecast_cases, expected_output_path, run_one_case
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(_THIS_DIR), "configs", "config.yaml")
 DEFAULT_N_WORKERS = 1  # see module docstring -- raise only after confirming available RAM

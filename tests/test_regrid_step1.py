@@ -1,8 +1,8 @@
 """Step 1 validation: MRMS-to-model-grid conservative regridding.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_regrid_step1.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_regrid_step1.py -v -s
 
-Uses the real, bundled python_obj/sample_data/ (a raw native-grid MRMS file +
+Uses the real, bundled py_obj/sample_data/ (a raw native-grid MRMS file +
 a small, pre-cropped real MPAS target grid) -- both are already small, so
 unlike when this test ran against the full multi-GB local test_mrms/test_mpas/
 directories, no further sub-cropping for speed is needed here.
@@ -16,7 +16,7 @@ import warnings
 import numpy as np
 import pytest
 
-from python_obj.regrid import (
+from py_obj.regrid import (
     RegridError,
     build_conservative_regridder,
     check_coverage,
@@ -25,8 +25,8 @@ from python_obj.regrid import (
     load_target_grid,
     regrid_field,
 )
-from python_obj.regrid.grid_spec import GridSpec, estimate_cell_corners
-from python_obj.regrid.io_mrms import MRMS_MISSING_VALUE, MRMS_NEAR_ZERO_VALUE, clip_near_zero_sentinel
+from py_obj.regrid.grid_spec import GridSpec, estimate_cell_corners
+from py_obj.regrid.io_mrms import MRMS_MISSING_VALUE, MRMS_NEAR_ZERO_VALUE, clip_near_zero_sentinel
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 MRMS_FILE = os.path.join(

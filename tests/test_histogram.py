@@ -1,7 +1,7 @@
-"""Histogram-capability validation: python_obj.histogram plus the
+"""Histogram-capability validation: py_obj.histogram plus the
 build_histogram_{mrms,model}.py/aggregate_histograms.py drivers.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_histogram.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_histogram.py -v -s
 """
 
 import glob
@@ -12,8 +12,8 @@ import netCDF4
 import numpy as np
 import pytest
 
-from python_obj.config import load_config
-from python_obj.histogram import (
+from py_obj.config import load_config
+from py_obj.histogram import (
     HistogramSlice,
     by_hour_of_day,
     by_lead_hours_range,
@@ -27,7 +27,7 @@ from python_obj.histogram import (
     value_at_percentile,
     write_histogram_file,
 )
-from python_obj.regrid import load_mrms_netcdf, load_model_netcdf
+from py_obj.regrid import load_mrms_netcdf, load_model_netcdf
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 CONFIGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configs")
@@ -253,7 +253,7 @@ def test_histogram_to_pdf_does_not_exclude_any_bin():
 # --- Check 6: real end-to-end against bundled sample_data -----------------
 
 def test_real_build_histogram_drivers_and_matched_percentile(tmp_path):
-    from python_obj.drivers import aggregate_histograms, build_histogram_mrms, build_histogram_model
+    from py_obj.drivers import aggregate_histograms, build_histogram_mrms, build_histogram_model
 
     config_path = os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")
 
@@ -318,7 +318,7 @@ def test_real_mask_excludes_cells_entirely_not_as_fake_clear_air(tmp_path):
     counts on the same real bundled grid, where conus_east is known (checked
     directly against the grid) to exclude ~51% of cells, a substantial,
     real, non-trivial fraction."""
-    from python_obj.drivers import build_histogram_mrms
+    from py_obj.drivers import build_histogram_mrms
 
     unmasked_cfg_path = os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")
     cfg = load_config(unmasked_cfg_path)  # resolves interp_mrms_dir to an absolute path
@@ -378,7 +378,7 @@ def _mixed_mrms_dir(tmp_path) -> str:
 
 
 def test_discover_by_day_default_pattern_sweeps_up_non_data_file(tmp_path):
-    from python_obj.drivers.build_histogram_mrms import _discover_by_day
+    from py_obj.drivers.build_histogram_mrms import _discover_by_day
     mixed_dir = _mixed_mrms_dir(tmp_path)
     by_day = _discover_by_day(mixed_dir)  # default pattern: "**/*.nc"
     n_files = sum(len(v) for v in by_day.values())
@@ -390,7 +390,7 @@ def test_discover_by_day_default_pattern_sweeps_up_non_data_file(tmp_path):
 def test_run_one_case_default_pattern_fails_on_mixed_directory(tmp_path):
     """Reproduces the real reported failure directly: a decoy file sorting
     first triggers KeyError: 'lat' before any real file is ever read."""
-    from python_obj.drivers.build_histogram_mrms import run_one_case
+    from py_obj.drivers.build_histogram_mrms import run_one_case
     mixed_dir = _mixed_mrms_dir(tmp_path)
 
     cfg_path = str(tmp_path / "config_mixed.yaml")
@@ -410,7 +410,7 @@ def test_run_one_case_default_pattern_fails_on_mixed_directory(tmp_path):
 
 
 def test_run_one_case_file_pattern_excludes_non_data_file(tmp_path):
-    from python_obj.drivers.build_histogram_mrms import run_one_case
+    from py_obj.drivers.build_histogram_mrms import run_one_case
     mixed_dir = _mixed_mrms_dir(tmp_path)
 
     cfg_path = str(tmp_path / "config_filtered.yaml")

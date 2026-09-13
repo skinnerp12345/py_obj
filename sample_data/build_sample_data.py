@@ -1,6 +1,6 @@
-"""Builds python_obj/sample_data/ from real local test data (this developer's
+"""Builds py_obj/sample_data/ from real local test data (this developer's
 own copies of test_mrms/, test_mpas/, test_wofs/, and the already-fetched
-python_obj/configs/output/fetched_mrms_wofs/), trimming/cropping each source
+py_obj/configs/output/fetched_mrms_wofs/), trimming/cropping each source
 file down to just the variables and global attributes this library actually
 reads (load_model_netcdf()'s varname/lat_name/lon_name + its time-derivation
 attrs). The trim is what makes the result small enough to commit to git --
@@ -21,7 +21,7 @@ by anything else; this is a provenance/regeneration record, not part of the
 library's own runtime.
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/sample_data/build_sample_data.py
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/sample_data/build_sample_data.py
 """
 
 import os
@@ -36,7 +36,7 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, REPO_ROOT)
 
-from python_obj.regrid import run_batch_interpolation  # noqa: E402 -- needs REPO_ROOT on sys.path first
+from py_obj.regrid import run_batch_interpolation  # noqa: E402 -- needs REPO_ROOT on sys.path first
 
 # ---- MPAS case: 3 real lead times with genuine storm signal (f000 has none) ----
 MPAS_SRC_DIR = os.path.join(REPO_ROOT, "test_mpas", "mem1")
@@ -73,7 +73,7 @@ WOFS_FILES = [
     "wofs_ALL_02_20260518_2300_2310.nc",
 ]
 MRMS_WOFS_SRC_DIR = os.path.join(
-    REPO_ROOT, "python_obj", "configs", "output", "fetched_mrms_wofs", "20260518"
+    REPO_ROOT, "py_obj", "configs", "output", "fetched_mrms_wofs", "20260518"
 )
 MRMS_WOFS_FILES = [
     "MRMS_MergedReflectivityQCComposite_00.50_20260518-230039.grib2.gz",

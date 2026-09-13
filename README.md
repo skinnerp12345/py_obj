@@ -1,4 +1,4 @@
-# python_obj
+# py_obj
 
 A small, standalone Python library for object-based thunderstorm verification
 — identifying storm objects (from composite reflectivity), optionally
@@ -19,7 +19,7 @@ MPAS) are bundled as concrete configurations, not as separate code paths.
 ## What's here
 
 ```
-python_obj/
+py_obj/
   regrid/          conservative MRMS-to-model-grid regridding (xesmf/ESMF)
   obj_core/        object identification, tracking, matching, CONUS masking
   histogram/       reflectivity-distribution histograms + matched-percentile thresholds
@@ -33,7 +33,7 @@ python_obj/
   time_utils.py    shared time-tolerance matching helper
 ```
 
-`python_obj/` has no dependency on anything outside itself — it can be copied
+`py_obj/` has no dependency on anything outside itself — it can be copied
 out of its original repository and used standalone.
 
 ## Installation
@@ -43,22 +43,23 @@ git clone https://github.com/skinnerp12345/py_obj.git
 cd py_obj
 
 conda env create -f environment.yml
-conda activate python_obj_env
-
-pip install -e . --no-deps
+conda activate py_obj_env
 ```
 
-The `pip install -e .` step matters and is not optional: every module in this
-library imports itself as `python_obj.xxx` (e.g. `from python_obj.config
-import load_config`), but this GitHub repo is named `py_obj`, so a plain `git
-clone` checks out a folder called `py_obj`, not `python_obj`. Without the
-`pip install -e .` step, every script fails with `ModuleNotFoundError: No
-module named 'python_obj'`, regardless of what your current directory is
-named or which folder you run scripts from. `pip install -e .` (using the
-`pyproject.toml` bundled in this repo) registers this checkout as the
-importable package `python_obj` directly in your `python_obj_env`
-environment, independent of the checkout folder's own name — so it only
-needs to be run once per environment, not once per clone location.
+Every module in this library imports itself as `py_obj.xxx` (e.g. `from
+py_obj.config import load_config`), matching both this GitHub repo's own
+name and the folder name a plain `git clone` produces — so nothing further
+is required to run any script directly from within the repo (e.g. `python
+drivers/interpolate_mrms.py ...`), since Python resolves `py_obj` as a
+regular package via the parent directory already being on the path.
+
+To use `py_obj` from a script or notebook OUTSIDE this repo (i.e. not run
+from inside it), either add the parent of this checkout to `sys.path`
+first, or install it as a real package once per environment:
+
+```bash
+pip install -e . --no-deps
+```
 
 ## Quick start
 

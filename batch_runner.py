@@ -1,6 +1,6 @@
 """Generic, domain-agnostic parallel case runner.
 
-Every driver in python_obj/drivers/ needs to run its own single-case entry
+Every driver in py_obj/drivers/ needs to run its own single-case entry
 point across a caller-supplied list of cases in parallel, collecting a
 success/failure report per case -- this is exactly the same shape of problem
 as run_batch_interpolation's file-level Pool, just one level up (case-level
@@ -18,7 +18,7 @@ or closure) -- multiprocessing.Pool on macOS/most modern platforms uses the
 `spawn` start method, which re-imports the calling script in every worker.
 Any script driving run_cases_in_parallel must guard its top-level call with
 `if __name__ == "__main__":`, exactly like run_batch_interpolation
-(python_obj/regrid/batch_interpolate.py) already requires -- calling it from
+(py_obj/regrid/batch_interpolate.py) already requires -- calling it from
 a REPL or `python -c "..."` will fail with a pickling/import error, not a
 silent hang.
 """

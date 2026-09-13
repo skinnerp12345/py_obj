@@ -2,7 +2,7 @@
 (with a "cases:" section + "{date}" placeholders) into many materialized
 per-case config files, without requiring one hand-written YAML per case.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_batch_config.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_batch_config.py -v -s
 """
 
 import os
@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 import yaml
 
-from python_obj.batch_config import expand_batch_config
-from python_obj.config import load_config
+from py_obj.batch_config import expand_batch_config
+from py_obj.config import load_config
 
 
 def _write_model_file(path: str) -> None:
@@ -255,8 +255,8 @@ def test_omitting_init_times_preserves_date_only_labels(tmp_path):
 # --- Check 4: real end-to-end against the bundled sample_data + run_cases_in_parallel
 
 def test_real_end_to_end_with_run_cases_in_parallel(tmp_path):
-    from python_obj.batch_runner import run_cases_in_parallel
-    from python_obj.drivers.build_histogram_model import run_one_case
+    from py_obj.batch_runner import run_cases_in_parallel
+    from py_obj.drivers.build_histogram_model import run_one_case
 
     sample_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data", "mpas_case", "mpas_mem1")
 

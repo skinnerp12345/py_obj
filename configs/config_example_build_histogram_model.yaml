@@ -5,12 +5,12 @@
 # demonstrates ONLY the `histogram_model:` section -- the one section
 # build_histogram_model.py's run_one_case() actually reads (see
 # require_section(cfg.histogram_model, ...) in
-# python_obj/drivers/build_histogram_model.py). Self-contained: no
+# py_obj/drivers/build_histogram_model.py). Self-contained: no
 # thresholds/masking/tracking-object fields, since this builds a raw
 # reflectivity-value distribution, not identified storm objects.
 #
 # Run with:
-#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_model.py python_obj/configs/config_example_build_histogram_model.yaml
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_model.py py_obj/configs/config_example_build_histogram_model.yaml
 
 histogram_model:
   input_dir: ../../test_mpas

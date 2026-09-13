@@ -147,7 +147,7 @@ def load_mrms_netcdf(
     lon_name: str = "lon",
     valid_time: datetime | None = None,
 ) -> MRMSField:
-    """Load pre-interpolated MRMS NetCDF -- e.g. `python_obj.regrid.batch_interpolate`'s
+    """Load pre-interpolated MRMS NetCDF -- e.g. `py_obj.regrid.batch_interpolate`'s
     own output, using variable names `lat`, `lon`, `refl_consv`.
 
     valid_time: if not given, read from the file's own `valid_time` global

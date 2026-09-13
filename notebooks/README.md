@@ -1,8 +1,8 @@
-# python_obj notebooks
+# py_obj notebooks
 
 Three paired, step-by-step walkthroughs of the pipeline, each with its own
-"sample config" (`python_obj/configs/config_sample_*.yaml`), all running
-against the small, real data bundled in `python_obj/sample_data/` -- no
+"sample config" (`py_obj/configs/config_sample_*.yaml`), all running
+against the small, real data bundled in `py_obj/sample_data/` -- no
 external test data needed (see `sample_data/README.md` for provenance):
 
 - **`wofs_tutorial.ipynb`** -- the full pipeline end to end: fetching
@@ -28,7 +28,7 @@ external test data needed (see `sample_data/README.md` for provenance):
 ## Prerequisites
 
 - The `pysteps_env` conda environment (`/opt/anaconda3/envs/pysteps_env/bin/python`),
-  which has `jupyter`/`nbformat` plus every dependency `python_obj/` itself needs
+  which has `jupyter`/`nbformat` plus every dependency `py_obj/` itself needs
   (`xesmf`, `netCDF4`, `pyproj`, `matplotlib`, etc).
 - For `wofs_tutorial.ipynb` only: internet access (Step 1 fetches real files
   from the public `noaa-mrms-pds` AWS S3 bucket -- no credentials needed).
@@ -49,9 +49,9 @@ or, to execute any of them non-interactively end to end:
 ```
 
 All outputs (fetched/interpolated files, object files, match files,
-histogram files) are written under `python_obj/configs/output/`, per the
+histogram files) are written under `py_obj/configs/output/`, per the
 paths configured in each notebook's sample config. To adapt any notebook to
 a different model or case, copy it and change the `CONFIG_PATH` variable in
 its Setup cell to point at a different config file -- see
-`python_obj/drivers/README.md` for the full config-field reference and
-other example configs under `python_obj/configs/`.
+`py_obj/drivers/README.md` for the full config-field reference and
+other example configs under `py_obj/configs/`.

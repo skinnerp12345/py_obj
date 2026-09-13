@@ -5,7 +5,7 @@
 # demonstrates ONLY the `histogram_observations:` section -- the one section
 # build_histogram_mrms.py's run_one_case() actually reads (see
 # require_section(cfg.histogram_observations, ...) in
-# python_obj/drivers/build_histogram_mrms.py). Self-contained: no
+# py_obj/drivers/build_histogram_mrms.py). Self-contained: no
 # thresholds/masking/tracking-object fields, since this builds a raw
 # reflectivity-value distribution, not identified storm objects.
 #
@@ -14,7 +14,7 @@
 # already-interpolated MRMS output.
 #
 # Run with:
-#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms.py python_obj/configs/config_example_build_histogram_mrms.yaml
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_mrms.py py_obj/configs/config_example_build_histogram_mrms.yaml
 
 histogram_observations:
   interp_mrms_dir: output/interp_mrms   # e.g. config_example_interpolate_mrms.yaml's own output (parent of YYYYMMDD/ subdirs)

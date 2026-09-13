@@ -58,7 +58,7 @@ class StormObject:
     # Only populated when tracking is requested (see tracking.py); None otherwise.
     age_seconds: float | None = None
     track_id: int | None = None
-    branch_id: int | None = None  # see tracking.py -- forks to a new id on a split, unchanged on simple continuation
+    split_id: str | None = None  # "<track_id>:n" -- see tracking.py for how n is assigned on a split
     # Only populated when storm_mode_classification is requested (see
     # identify_objects()); None otherwise. Groups objects merged into one
     # "system" for storm-mode classification -- every object sharing a

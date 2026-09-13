@@ -1,6 +1,6 @@
 # SAMPLE CONFIG -- single-member MPAS forecast scenario, used by
-# python_obj/notebooks/mpas_tutorial.ipynb: identify (non-tracked) objects in
-# the MPAS forecast (python_obj/sample_data/mpas_case/mpas_mem1/, f001-f003,
+# py_obj/notebooks/mpas_tutorial.ipynb: identify (non-tracked) objects in
+# the MPAS forecast (py_obj/sample_data/mpas_case/mpas_mem1/, f001-f003,
 # 3 real hourly lead times over a small ~750x750 km crop), identify
 # (non-tracked) objects in the already-interpolated MRMS truth series for the
 # same 3 hours, then match the two. Unlike config_sample_wofs.yaml, no

@@ -20,9 +20,9 @@ _TIME_UNITS = "seconds since 1970-01-01 00:00:00"
 _MATCH_FLOAT_FIELDS = [
     "ti_score", "centroid_dist_km",
     "truth_area_km2", "truth_max_intensity", "truth_mean_intensity", "truth_centroid_lat", "truth_centroid_lon",
-    "truth_solidity", "truth_major_axis_length", "truth_minor_axis_length", "truth_eccentricity",
+    "truth_solidity", "truth_major_axis_length", "truth_minor_axis_length", "truth_eccentricity", "truth_age_seconds",
     "forecast_area_km2", "forecast_max_intensity", "forecast_mean_intensity", "forecast_centroid_lat", "forecast_centroid_lon",
-    "forecast_solidity", "forecast_major_axis_length", "forecast_minor_axis_length", "forecast_eccentricity",
+    "forecast_solidity", "forecast_major_axis_length", "forecast_minor_axis_length", "forecast_eccentricity", "forecast_age_seconds",
 ]
 _MATCH_REQUIRED_INT_FIELDS = ["truth_id", "forecast_id"]  # always int, -1 = not applicable
 # truth_is_linear/forecast_is_linear: 0=cellular, 1=mixed, 2=linear -- -1
@@ -195,9 +195,26 @@ def read_match_file(path: str) -> MatchFileContents:
             for fname in _MATCH_REQUIRED_INT_FIELDS:
                 kwargs[fname] = int(ds.variables[fname][i])
             for fname in _MATCH_OPTIONAL_INT_FIELDS:
+                # Backward compatibility: truth_system_id/forecast_system_id were
+                # added after every real on-disk match file in this project was
+                # already written (a v2 storm_mode_classification addition) --
+                # same hasattr-gated fallback-to-None pattern object_io.py already
+                # uses for its own newer optional fields (storm_mode_classification/
+                # split_id/system_id), rather than assuming every file has every
+                # field this schema has ever grown.
+                if fname not in ds.variables:
+                    kwargs[fname] = None
+                    continue
                 raw = int(ds.variables[fname][i])
                 kwargs[fname] = None if raw == -1 else raw
             for fname in _MATCH_FLOAT_FIELDS:
+                # Backward compatibility: centroid_dist_km was added after
+                # some real on-disk match files (e.g. ncar_mpas_analysis's)
+                # were already written -- same hasattr-gated fallback as the
+                # optional int fields above.
+                if fname not in ds.variables:
+                    kwargs[fname] = None
+                    continue
                 raw = float(ds.variables[fname][i])
                 kwargs[fname] = None if np.isnan(raw) else raw
             records.append(MatchRecord(**kwargs))

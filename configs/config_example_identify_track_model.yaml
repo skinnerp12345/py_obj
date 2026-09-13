@@ -4,13 +4,13 @@
 # set of named parameters, no code changes needed to adjust a run. This file
 # demonstrates ONLY the two sections identify_track_model.py's run_one_case()
 # actually reads: `model:` + `linear_classification:` (see the two
-# require_section(...) calls in python_obj/drivers/identify_track_model.py).
+# require_section(...) calls in py_obj/drivers/identify_track_model.py).
 #
 # Real scenario: a 2-member MPAS ensemble (test_mpas/mem1/, test_mpas/mem2/),
 # consolidated into one ensemble_snapshot object file per valid_time.
 #
 # Run with:
-#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model.py python_obj/configs/config_example_identify_track_model.yaml
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_model.py py_obj/configs/config_example_identify_track_model.yaml
 
 model:
   input_dir: ../../test_mpas

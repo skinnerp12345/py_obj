@@ -4,14 +4,14 @@ multi-member ensemble.
 
 No interpolation step here (model output is assumed already on its own
 target grid); no matching against truth (see run_matching.py for that). A
-thin driver over python_obj.obj_core.run_object_id_series; does not modify
-anything else in python_obj/. Configured entirely via the shared
-python_obj/configs/config.yaml (its 'model:' and 'linear_classification:' sections).
+thin driver over py_obj.obj_core.run_object_id_series; does not modify
+anything else in py_obj/. Configured entirely via the shared
+py_obj/configs/config.yaml (its 'model:' and 'linear_classification:' sections).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_model.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import os
@@ -21,12 +21,12 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import ModelConfig, load_config, require_section
-from python_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east, run_object_id_series
+from py_obj.config import ModelConfig, load_config, require_section
+from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east, run_object_id_series
 
 
 def build_manifest(model: ModelConfig):
-    """Thin adapter over the shared python_obj.obj_core.build_model_manifest
+    """Thin adapter over the shared py_obj.obj_core.build_model_manifest
     (promoted there so the histogram-building driver can reuse the same file-
     discovery logic without duplicating it)."""
     return build_model_manifest(

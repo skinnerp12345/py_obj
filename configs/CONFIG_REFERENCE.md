@@ -1,6 +1,6 @@
 # Config reference
 
-Every `python_obj/configs/*.yaml` file is parsed by `python_obj.config.load_config()`
+Every `py_obj/configs/*.yaml` file is parsed by `py_obj.config.load_config()`
 into a `Config` object with several independently **optional** top-level
 sections. Each section here functions like a **namelist** familiar from NWP
 models (WRF, MPAS): one flat set of named parameters, no code changes needed
@@ -69,7 +69,7 @@ interpolated MRMS data. Paired with `linear_classification:` (see below) --
 | `area_threshold_km2` | float | *required* | Minimum true physical area (km²) for an object to be retained. |
 | `interp_mrms_dir` | str | *required* | Directory of already-interpolated MRMS files (typically `interpolate_mrms.py`'s own output). |
 | `mask` | str | `"none"` | `none` \| `conus` \| `conus_east` — spatial domain restriction. |
-| `track` | bool | `false` | Whether to track objects in time (assigns `track_id`/`branch_id`/`age_seconds`). |
+| `track` | bool | `false` | Whether to track objects in time (assigns `track_id`/`split_id`/`age_seconds`). |
 | `track_distance_km` | float | `0.0` | Buffer distance for tracking linkage; `0.0` = touching/overlapping only. |
 | `file_grouping` | str | `"single"` | `single` \| `member_series` \| `ensemble_snapshot` \| `full` \| `init_snapshot` — output file shape. |
 | `object_output_dir` | str | `"output/obj_mrms"` | Output directory for object files. |
@@ -246,7 +246,7 @@ Exactly one time-derivation mode is required: `valid_time_attr`+`valid_time_form
 
 ---
 
-## Batch expansion: `cases:` — read by `python_obj.batch_config.expand_batch_config()`
+## Batch expansion: `cases:` — read by `py_obj.batch_config.expand_batch_config()`
 
 Not a `Config` section itself — a separate top-level block recognized only
 by the template-expansion mechanism (`expand_batch_config()`), which

@@ -104,6 +104,7 @@ def run_object_id_series(
     grid_geometry: GridGeometry | None = None
     all_results: list[IdentificationResult] = []
     next_track_id = 1
+    next_split_n: dict[int, int] = {}
 
     for member_id, entries in by_member.items():
         prev_objects: list[StormObject] | None = None
@@ -131,10 +132,10 @@ def run_object_id_series(
             )
 
             if track_in_time:
-                objects, next_track_id = track_objects_incremental(
+                objects, next_track_id, next_split_n = track_objects_incremental(
                     prev_objects, prev_labels, prev_time,
                     objects, labels, entry.valid_time,
-                    grid_geometry, next_track_id, track_bound_disp_km=track_bound_disp_km,
+                    grid_geometry, next_track_id, next_split_n, track_bound_disp_km=track_bound_disp_km,
                 )
                 prev_objects, prev_labels, prev_time = objects, labels, entry.valid_time
 

@@ -2,14 +2,14 @@
 computed target grid (southwest corner + regular km spacing + dimensions)
 as an alternative to load_target_grid()'s file-backed grid.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_grid_builder.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_grid_builder.py -v -s
 """
 
 import numpy as np
 import pyproj
 import pytest
 
-from python_obj.regrid.grid_builder import build_corner_spacing_grid
+from py_obj.regrid.grid_builder import build_corner_spacing_grid
 
 
 def test_shape_and_sw_corner_round_trip():

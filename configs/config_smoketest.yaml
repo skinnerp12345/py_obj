@@ -1,5 +1,5 @@
 # Small, resource-conservative smoke-test config: 3 real, bundled hourly MRMS
-# files (python_obj/sample_data/), few workers. Only interpolation: +
+# files (py_obj/sample_data/), few workers. Only interpolation: +
 # observations: are populated -- demonstrates that a driver only needs the
 # section(s) it actually uses; model:/matching: are simply absent here, not
 # an error.

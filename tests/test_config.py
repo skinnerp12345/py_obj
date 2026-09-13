@@ -1,7 +1,7 @@
 """Config layer validation: one unified config file, five independently
 optional top-level sections.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_config.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_config.py -v -s
 """
 
 import glob
@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import yaml
 
-from python_obj.config import (
+from py_obj.config import (
     Config,
     FetchMrmsConfig,
     HistogramModelConfig,
@@ -25,8 +25,8 @@ from python_obj.config import (
     load_config,
     require_section,
 )
-from python_obj.obj_core import SeriesEntry, conus_mask_east, read_object_file, run_object_id_series
-from python_obj.regrid import load_model_netcdf
+from py_obj.obj_core import SeriesEntry, conus_mask_east, read_object_file, run_object_id_series
+from py_obj.regrid import load_model_netcdf
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PYTHON_OBJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +34,7 @@ CONFIGS_DIR = os.path.join(PYTHON_OBJ_DIR, "configs")
 REAL_CONFIG_PATH = os.path.join(CONFIGS_DIR, "config.yaml")
 MPAS_MEM_DIR = os.path.join(REPO_ROOT, "test_mpas")   # unchanged -- test data doesn't move
 # config.yaml deliberately still points at this larger, non-bundled 2-member
-# (mem1/mem2) local dataset (see python_obj/sample_data/README.md, "What's
+# (mem1/mem2) local dataset (see py_obj/sample_data/README.md, "What's
 # NOT bundled here") -- the 2 checks below that validate config.yaml's own
 # real ensemble behavior against it skip cleanly (not fail) when it's absent,
 # e.g. on a fresh clone that only has the bundled sample_data/.

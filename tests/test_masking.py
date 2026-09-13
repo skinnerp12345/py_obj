@@ -1,6 +1,6 @@
 """Step 3 validation: CONUS domain masking.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_masking.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_masking.py -v -s
 """
 
 import os
@@ -10,8 +10,8 @@ import pyproj
 import pytest
 import shapely
 
-from python_obj.obj_core import conus_mask, conus_mask_east, load_conus_boundary
-from python_obj.obj_core.masking import distance_to_boundary_km
+from py_obj.obj_core import conus_mask, conus_mask_east, load_conus_boundary
+from py_obj.obj_core.masking import distance_to_boundary_km
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 
@@ -97,7 +97,7 @@ def test_real_geography_spot_checks(name, lat, lon, expect_inside, expect_masked
 # --- Check 3: real MPAS grid ------------------------------------------------
 
 def test_conus_mask_on_real_mpas_grid():
-    from python_obj.regrid import load_target_grid
+    from py_obj.regrid import load_target_grid
 
     grid = load_target_grid(
         os.path.join(SAMPLE_DATA_DIR, "mpas_case/mpas_mem1/interp_mpas_3km_2023050100_mem1_f001.nc"),

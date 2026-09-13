@@ -1,7 +1,7 @@
 # Sample data
 
 Small, **real** (not synthetic) data bundled with the library so the test
-suite and the two tutorial notebooks (`python_obj/notebooks/`) can run with
+suite and the two tutorial notebooks (`py_obj/notebooks/`) can run with
 zero external data -- just clone and go.
 
 ## Provenance
@@ -26,7 +26,7 @@ zero external data -- just clone and go.
   `valid_time`/`init_time`. Paired with the 3 real MRMS `.grib2.gz` files
   nearest each WoFS valid time, already fetched from the public
   `noaa-mrms-pds` AWS archive in an earlier session (see
-  `python_obj/drivers/fetch_mrms.py`).
+  `py_obj/drivers/fetch_mrms.py`).
 
 Both source models' full files are 234-281 MB each -- almost entirely unused
 WRF diagnostic variables this library never reads. Trimming down to just the
@@ -39,7 +39,7 @@ MPAS lead times are ~0.3 MB each here (was ~280 MB), WoFS files are
 
 `build_sample_data.py` is the exact script that produced everything in this
 directory from this developer's own local copies of `test_mrms/`, `test_mpas/`,
-`test_wofs/`, and `python_obj/configs/output/fetched_mrms_wofs/`. It is not run
+`test_wofs/`, and `py_obj/configs/output/fetched_mrms_wofs/`. It is not run
 automatically by anything else -- it's a provenance record, kept in case the
 sample ever needs to be regenerated or extended (e.g. a different crop window,
 more lead times). Requires those larger source directories to exist locally;

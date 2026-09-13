@@ -14,12 +14,12 @@ dataclasses; it never calls into obj_core itself.
 One config file, several independently OPTIONAL top-level sections
 (interpolation/observations/model/matching/linear_classification/fetch_mrms/
 histogram_observations/histogram_model). A user populates only the sections
-relevant to their problem; each driver script (python_obj/drivers/) reads
+relevant to their problem; each driver script (py_obj/drivers/) reads
 only the section(s) it needs and calls require_section() to fail loudly if a
 section IT needs is missing -- a section absent from the YAML is not itself
 an error, since a different driver may not need it at all. See
-python_obj/configs/CONFIG_REFERENCE.md for a field-by-field reference of
-every section, and python_obj/configs/config_example_*.yaml for one
+py_obj/configs/CONFIG_REFERENCE.md for a field-by-field reference of
+every section, and py_obj/configs/config_example_*.yaml for one
 single-purpose example config per driver.
 
 Deliberately flat within each section, not per-model-named: `observations`/
@@ -325,7 +325,7 @@ def require_section(section, section_name: str, config_path: str):
         raise ValueError(
             f"'{config_path}' has no '{section_name}:' section, but this driver requires one. "
             f"Add a '{section_name}:' section with its required fields "
-            f"(see python_obj/configs/config.yaml for a populated example)."
+            f"(see py_obj/configs/config.yaml for a populated example)."
         )
     return section
 

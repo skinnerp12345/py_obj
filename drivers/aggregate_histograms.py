@@ -7,16 +7,16 @@ distributions (the actual end goal: "what model dBZ value corresponds to the
 same percentile as MRMS's 40 dBZ?").
 
 Not a from-scratch pipeline stage -- this is a thin driver over
-python_obj.histogram.aggregate, showing the reusable functions there working
+py_obj.histogram.aggregate, showing the reusable functions there working
 against real output. Reuses the same 'histogram_observations:'/
 'histogram_model:' config sections build_histogram_mrms.py/
 build_histogram_model.py already read (their own output_dir fields tell this
 script where to find their output).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/aggregate_histograms.py [path/to/config.yaml] [source_threshold_dbz]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/aggregate_histograms.py [path/to/config.yaml] [source_threshold_dbz]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 source_threshold_dbz defaults to 40.0 if omitted.
 """
 
@@ -28,8 +28,8 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
-from python_obj.histogram import (
+from py_obj.config import load_config, require_section
+from py_obj.histogram import (
     by_hour_of_day,
     by_lead_hours_range,
     match_percentile_threshold,

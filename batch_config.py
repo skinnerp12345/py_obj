@@ -8,7 +8,7 @@ date_format), and a literal "{date}" placeholder inside whichever path fields
 vary per case (e.g. `input_dir: /glade/.../{date}00/post`). expand_batch_config()
 substitutes "{date}" with each case's date string and writes one materialized
 config file per case, ready to feed straight into
-python_obj.batch_runner.run_cases_in_parallel -- run_one_case()/load_config()
+py_obj.batch_runner.run_cases_in_parallel -- run_one_case()/load_config()
 themselves need no changes at all, since a materialized file is just a
 completely ordinary config.
 
@@ -62,7 +62,7 @@ from datetime import datetime, timedelta
 
 import yaml
 
-from python_obj.config import Config, load_config
+from py_obj.config import Config, load_config
 
 # Per-section attribute name (on Config) -> the field on that section's own
 # dataclass that names the one directory whose presence/non-emptiness defines

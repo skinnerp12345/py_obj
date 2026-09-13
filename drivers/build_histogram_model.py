@@ -4,19 +4,19 @@ lead time, every member if an ensemble). Configurable bins/variable, and
 preserves one histogram slice per (member, lead-time) combination -- tagged
 with its real valid_time, lead_hours, and member_id -- inside the one output
 file, rather than collapsing everything to one flat total. This is what lets
-python_obj.histogram.aggregate later build a "day N of the forecast" subset
+py_obj.histogram.aggregate later build a "day N of the forecast" subset
 from a single multi-day run.
 
-A thin driver over python_obj.histogram; does not modify anything else in
-python_obj/. Configured entirely via the shared python_obj/configs/config.yaml
+A thin driver over py_obj.histogram; does not modify anything else in
+py_obj/. Configured entirely via the shared py_obj/configs/config.yaml
 (its 'histogram_model:' section). File discovery reuses
-python_obj.obj_core.build_model_manifest -- the same manifest builder
+py_obj.obj_core.build_model_manifest -- the same manifest builder
 identify_track_model.py uses.
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_model.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_model.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import os
@@ -30,9 +30,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import HistogramModelConfig, load_config, require_section
-from python_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
-from python_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
+from py_obj.config import HistogramModelConfig, load_config, require_section
+from py_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
+from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
 
 _LEAD_UNITS_TO_HOURS = {"hours": 1.0, "minutes": 1.0 / 60.0, "seconds": 1.0 / 3600.0}
 

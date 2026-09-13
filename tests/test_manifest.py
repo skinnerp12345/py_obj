@@ -5,14 +5,14 @@ an unrelated sibling directory (ens_mean_5mems) with no matching forecast
 files, which made the unfiltered "every subdirectory is a member" discovery
 raise FileNotFoundError on the first non-member directory it encountered.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_manifest.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_manifest.py -v -s
 """
 
 import numpy as np
 import netCDF4
 import pytest
 
-from python_obj.obj_core import build_model_manifest
+from py_obj.obj_core import build_model_manifest
 
 
 def _write_member_file(path: str) -> None:

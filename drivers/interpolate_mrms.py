@@ -2,14 +2,14 @@
 
 Interpolation only, does not identify or track objects (see
 identify_track_mrms.py for that). A thin driver over
-python_obj.regrid.run_batch_interpolation; does not modify anything else in
-python_obj/. Configured entirely via the shared python_obj/configs/config.yaml (only
+py_obj.regrid.run_batch_interpolation; does not modify anything else in
+py_obj/. Configured entirely via the shared py_obj/configs/config.yaml (only
 its 'interpolation:' section is used).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/interpolate_mrms.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/interpolate_mrms.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import os
@@ -19,8 +19,8 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
-from python_obj.regrid import BatchSummary, build_corner_spacing_grid, run_batch_interpolation
+from py_obj.config import load_config, require_section
+from py_obj.regrid import BatchSummary, build_corner_spacing_grid, run_batch_interpolation
 
 
 def run_one_case(config_path: str) -> BatchSummary:

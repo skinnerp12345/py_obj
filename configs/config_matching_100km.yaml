@@ -1,9 +1,9 @@
 # Sensitivity-analysis config: object matching over the real ncar_mpas_analysis
 # MRMS/MPAS archives with max_boundary_disp_km/max_centroid_disp_km raised to
 # 100 km (default elsewhere in this project is 40 km -- see configs/config.yaml).
-# All other matching parameters left at python_obj's established defaults.
+# All other matching parameters left at py_obj's established defaults.
 #
-# Run via python_obj/drivers/run_matching_per_case.py (NOT run_matching.py --
+# Run via py_obj/drivers/run_matching_per_case.py (NOT run_matching.py --
 # see that driver's own docstring for why a whole-directory single call isn't
 # viable for this archive: 118 large, temporally-overlapping MPAS forecast
 # cases against a 3120-file MRMS archive).

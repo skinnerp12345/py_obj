@@ -3,14 +3,14 @@ threshold combination per shape tier, computed in physical km-space rather
 than pixel-index space (see obj_core/geometry.py's anisotropy-fix
 docstring).
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_linear_classification.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_linear_classification.py -v -s
 """
 
 import os
 
 import numpy as np
 
-from python_obj.obj_core import (
+from py_obj.obj_core import (
     IdentificationResult,
     build_projected_coords,
     identify_objects,
@@ -19,7 +19,7 @@ from python_obj.obj_core import (
     read_object_file,
     write_object_file,
 )
-from python_obj.regrid import load_model_netcdf
+from py_obj.regrid import load_model_netcdf
 
 MPAS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data", "mpas_case", "mpas_mem1")
 

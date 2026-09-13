@@ -4,7 +4,7 @@
 # set of named parameters, no code changes needed to adjust a run. This file
 # demonstrates ONLY the two sections identify_track_mrms.py's run_one_case()
 # actually reads: `observations:` + `linear_classification:` (see the two
-# require_section(...) calls in python_obj/drivers/identify_track_mrms.py) --
+# require_section(...) calls in py_obj/drivers/identify_track_mrms.py) --
 # linear_classification: is paired here (not split further) because this
 # driver genuinely needs both together, not because they're incidentally
 # bundled.
@@ -14,7 +14,7 @@
 # already-interpolated MRMS output.
 #
 # Run with:
-#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_mrms.py python_obj/configs/config_example_identify_track_mrms.yaml
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_mrms.py py_obj/configs/config_example_identify_track_mrms.yaml
 
 observations:
   file_format: netcdf          # netcdf | grib2 -- selects the loader

@@ -251,8 +251,13 @@ def write_object_file(
             age_var[:] = [o.age_seconds if o.age_seconds is not None else np.nan for o in flat_objects]
             track_id_var = ds.createVariable("track_id", "i8", ("object",), zlib=True)
             track_id_var[:] = [o.track_id if o.track_id is not None else -1 for o in flat_objects]
-            branch_id_var = ds.createVariable("branch_id", "i8", ("object",), zlib=True)
-            branch_id_var[:] = [o.branch_id if o.branch_id is not None else -1 for o in flat_objects]
+            # split_id is a string ("<track_id>:n"), not an int -- one vlen-str
+            # netCDF variable per object, item-assigned (same pattern as
+            # match_io.py's per-record `category` field), not vectorizable
+            # like the numeric fields above.
+            split_id_var = ds.createVariable("split_id", str, ("object",))
+            for i, o in enumerate(flat_objects):
+                split_id_var[i] = o.split_id if o.split_id is not None else ""
 
         if storm_mode_classification:
             system_id_var = ds.createVariable("system_id", "i8", ("object",), zlib=True)
@@ -326,15 +331,15 @@ def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
         centroid_rowcol = (float(ds.variables["centroid_row"][i]), float(ds.variables["centroid_col"][i]))
         age_seconds = None
         track_id = None
-        branch_id = None
+        split_id = None
         if tracked:
             raw_age = float(ds.variables["age_seconds"][i])
             age_seconds = None if np.isnan(raw_age) else raw_age
             raw_tid = int(ds.variables["track_id"][i])
             track_id = None if raw_tid == -1 else raw_tid
-            if "branch_id" in ds.variables:  # absent on any tracked file written before v2
-                raw_bid = int(ds.variables["branch_id"][i])
-                branch_id = None if raw_bid == -1 else raw_bid
+            if "split_id" in ds.variables:  # absent on any tracked file written before the split_id rename
+                raw_split_id = str(ds.variables["split_id"][i])
+                split_id = None if raw_split_id == "" else raw_split_id
         system_id = None
         if storm_mode_classification:
             raw_sid = int(ds.variables["system_id"][i])
@@ -347,7 +352,7 @@ def _read_objects_table(ds: netCDF4.Dataset) -> list[StormObject]:
                 centroid_rowcol=centroid_rowcol,
                 age_seconds=age_seconds,
                 track_id=track_id,
-                branch_id=branch_id,
+                split_id=split_id,
                 system_id=system_id,
                 **kwargs,
             )

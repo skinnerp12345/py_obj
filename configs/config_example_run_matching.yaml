@@ -4,7 +4,7 @@
 # set of named parameters, no code changes needed to adjust a run. This file
 # demonstrates ONLY the `matching:` section -- the one section
 # run_matching.py's run_one_case() actually reads (see
-# require_section(cfg.matching, ...) in python_obj/drivers/run_matching.py).
+# require_section(cfg.matching, ...) in py_obj/drivers/run_matching.py).
 #
 # Reads two pre-existing object-file directories (from any source, any
 # driver) -- points here at output/obj_mrms and output/obj_model_ensemble,
@@ -14,7 +14,7 @@
 # your own already-identified object files.
 #
 # Run with:
-#   /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching.py python_obj/configs/config_example_run_matching.yaml
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching.py py_obj/configs/config_example_run_matching.yaml
 
 matching:
   truth_object_dir: output/obj_mrms              # e.g. config_example_identify_track_mrms.yaml's own output

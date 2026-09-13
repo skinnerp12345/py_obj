@@ -1,15 +1,15 @@
-# python_obj/drivers/
+# py_obj/drivers/
 
 Standalone, independently-runnable driver scripts built on top of the rest
-of `python_obj/` (nothing here modifies `regrid/`, `obj_core/`, or
+of `py_obj/` (nothing here modifies `regrid/`, `obj_core/`, or
 `config.py`). Each driver reads only the section(s) of a **config file** it
 actually needs. Every config file functions like a **namelist** familiar
 from NWP models (WRF, MPAS): one flat set of named parameters per section,
 no code changes needed to adjust a run. Populate whichever sections are
-relevant to your problem in `python_obj/configs/config.yaml` (a
+relevant to your problem in `py_obj/configs/config.yaml` (a
 fully-populated, chained reference spanning every section, and every
 driver's own default config path when none is given on the command line),
-or start from `python_obj/configs/config_example_<driver_name>.yaml` (one
+or start from `py_obj/configs/config_example_<driver_name>.yaml` (one
 single-purpose example per driver). Omitting a section a given driver
 doesn't use is never an error; using a driver whose required section is
 missing raises a clear, named error telling you which section to add.
@@ -19,7 +19,7 @@ The `pysteps_env` conda environment is required for all of these:
 
 ## The config file
 
-`python_obj/configs/config.yaml` has independently optional top-level sections:
+`py_obj/configs/config.yaml` has independently optional top-level sections:
 
 | Section | Used by | Required fields |
 |---|---|---|
@@ -33,11 +33,11 @@ The `pysteps_env` conda environment is required for all of these:
 | `histogram_model:` | `build_histogram_model.py`, `aggregate_histograms.py` | `input_dir`, and either `valid_time_attr`+`valid_time_format` or `init_attr`+`lead_attr`+`init_format` |
 
 Every other field has a documented default — see the comments in
-`python_obj/configs/config.yaml` for the full field list. Paths are resolved relative
+`py_obj/configs/config.yaml` for the full field list. Paths are resolved relative
 to **the config file's own directory**, not your current directory, so the
 same file behaves identically no matter where you run a driver from.
 
-`python_obj/configs/config.yaml` as shipped populates all sections and chains
+`py_obj/configs/config.yaml` as shipped populates all sections and chains
 together end to end (interpolation's output feeds observations' input;
 observations'/model's outputs feed matching's inputs) — a complete,
 self-consistent walkthrough if you run all four drivers against it in
@@ -45,12 +45,12 @@ sequence. It also doubles as every driver's own default config path when none
 is given on the command line.
 
 For a single-purpose example matching exactly one driver's own required
-section(s) instead, see `python_obj/configs/config_example_<driver_name>.yaml`
+section(s) instead, see `py_obj/configs/config_example_<driver_name>.yaml`
 — one per driver (`config_example_interpolate_mrms.yaml`,
 `config_example_identify_track_mrms.yaml`,
 `config_example_identify_track_model.yaml`, `config_example_run_matching.yaml`,
 `config_example_fetch_mrms.yaml`, `config_example_build_histogram_mrms.yaml`,
-`config_example_build_histogram_model.yaml`). `python_obj/configs/config_smoketest.yaml`
+`config_example_build_histogram_model.yaml`). `py_obj/configs/config_smoketest.yaml`
 (interpolation+observations only, 4 files) is a further, bundled-sample-data
 smaller example.
 
@@ -60,7 +60,7 @@ Interpolates raw native-grid MRMS composite reflectivity onto a fixed target
 grid. Requires `interpolation:`.
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/interpolate_mrms.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/interpolate_mrms.py [path/to/config.yaml]
 ```
 
 Writes one NetCDF file per input MRMS file under `interpolation.interp_mrms_dir`.
@@ -107,11 +107,11 @@ product.
     target_grid_cen_lat: null
     target_grid_cen_lon: null
   ```
-  Built via `python_obj.regrid.build_corner_spacing_grid()` on an LCC
+  Built via `py_obj.regrid.build_corner_spacing_grid()` on an LCC
   projection (matching the convention already used elsewhere in this
   library). Giving both modes, or an incomplete set of the corner+spacing+dims
   fields, raises a clear error at config-load time rather than guessing which
-  one you meant. See `python_obj/configs/config_smoketest_corner_grid.yaml`
+  one you meant. See `py_obj/configs/config_smoketest_corner_grid.yaml`
   for a complete, runnable example (same bundled sample MRMS data as
   `config_smoketest.yaml`, computed target grid instead of a model file).
 
@@ -122,7 +122,7 @@ MRMS data. Requires `observations:` + `linear_classification:` (needs
 `interpolate_mrms.py` to have already populated `observations.interp_mrms_dir`).
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_mrms.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_mrms.py [path/to/config.yaml]
 ```
 
 Writes object files under `observations.object_output_dir`, shaped per
@@ -140,7 +140,7 @@ target grid) and no truth-vs-forecast matching. Requires `model:` +
 `linear_classification:`.
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_model.py [path/to/config.yaml]
 ```
 
 `model.member_subdirs: false` (default) treats `input_dir` as one flat
@@ -190,7 +190,7 @@ forecast series — from any source) into `hit`/`miss`/`false_alarm`/
 identification/tracking here. Requires `matching:`.
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching.py [path/to/config.yaml]
 ```
 
 `matching.max_time_offset_minutes` is the tolerance for aligning each
@@ -207,12 +207,12 @@ credentials needed, plain HTTPS), in either of two independent, mutually
 exclusive modes. Requires `fetch_mrms:`.
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/fetch_mrms.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/fetch_mrms.py [path/to/config.yaml]
 ```
 
 **Model-driven mode** — for a model (e.g. WoFS) that has no local matching
 MRMS data yet: for each file under `model_input_dir`, derives its valid_time
-(via `python_obj.regrid.read_valid_time_only`'s flexible mechanism — either a
+(via `py_obj.regrid.read_valid_time_only`'s flexible mechanism — either a
 ready-made `valid_time_attr`+`valid_time_format` string, e.g. WoFS's
 `valid_time="20260518_230000"`, or `init_attr`+`lead_attr`+`init_format`
 arithmetic, e.g. MPAS's), lists that day's MRMS archive (one HTTPS request
@@ -261,7 +261,7 @@ histogram for **each day** of already-interpolated MRMS, with fully
 configurable bins/variable. Requires `histogram_observations:`.
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_mrms.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_mrms.py [path/to/config.yaml]
 ```
 
 Groups `histogram_observations.interp_mrms_dir` by its `YYYYMMDD`
@@ -299,11 +299,11 @@ fixed-range design above is trying to keep uncontaminated.
 Builds one distribution histogram for **one whole forecast** (every lead
 time, every member if an ensemble), with fully configurable bins/variable.
 Requires `histogram_model:`. File discovery reuses the same
-`python_obj.obj_core.build_model_manifest` `identify_track_model.py` itself
+`py_obj.obj_core.build_model_manifest` `identify_track_model.py` itself
 uses (same `member_subdirs`/`stacked_members`/`file_pattern` semantics).
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/build_histogram_model.py [path/to/config.yaml]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_model.py [path/to/config.yaml]
 ```
 
 Writes **one histogram file for the whole forecast** under
@@ -322,15 +322,15 @@ forecast") model subset -- then a real matched-percentile-threshold
 computation between the two full distributions: find a source value's
 percentile, then find the target distribution's value at that same
 percentile, via a reusable function
-(`python_obj.histogram.match_percentile_threshold`). Requires
+(`py_obj.histogram.match_percentile_threshold`). Requires
 `histogram_observations:` + `histogram_model:` (reads their own
 `output_dir`s to find the histogram files to aggregate).
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/aggregate_histograms.py [path/to/config.yaml] [source_threshold_dbz]
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/aggregate_histograms.py [path/to/config.yaml] [source_threshold_dbz]
 ```
 
-For programmatic/notebook use, `python_obj.histogram.sum_histograms(paths,
+For programmatic/notebook use, `py_obj.histogram.sum_histograms(paths,
 predicate=...)` with `by_hour_of_day(hours)`/`by_lead_hours_range(min, max)`
 is the reusable building block this driver is a thin wrapper over -- see
 `notebooks/histogram_tutorial.ipynb`.
@@ -343,10 +343,10 @@ Each driver has a `_batch.py` companion (`interpolate_mrms_batch.py`,
 `build_histogram_model_batch.py`) that runs its sibling's
 `run_one_case(config_path)`
 across a list of per-case config files in parallel, via
-`python_obj.batch_runner.run_cases_in_parallel`:
+`py_obj.batch_runner.run_cases_in_parallel`:
 
 ```bash
-/opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/identify_track_model_batch.py
+/opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_model_batch.py
 ```
 
 Prints a `BatchCaseSummary` (succeeded/failed count, each failing case's own
@@ -369,12 +369,12 @@ date-named case directories under one parent, e.g. `.../2023051100/`,
 `.../2023051200/`, ...) — one template YAML with a `cases:` section
 (`dates:` or `date_range:`) and a literal `"{date}"` placeholder inside
 whichever fields vary per case, expanded automatically via
-`python_obj.batch_config.expand_batch_config()` (see
+`py_obj.batch_config.expand_batch_config()` (see
 `configs/config_batch_template.yaml` for a full worked example, and
 `batch_config.py`'s module docstring for the exact schema):
 
 ```python
-from python_obj.batch_config import expand_batch_config
+from py_obj.batch_config import expand_batch_config
 expanded = expand_batch_config(
     template_path=os.path.join(os.path.dirname(_THIS_DIR), "configs", "config_batch_template.yaml"),
     output_dir=os.path.join(os.path.dirname(_THIS_DIR), "configs", "output", "_batch_configs"),
@@ -395,23 +395,23 @@ files live in a different output directory than the template itself.
 ## Reading the output
 
 ```python
-from python_obj.regrid import load_mrms_netcdf
-from python_obj.obj_core import read_object_file, read_match_file
+from py_obj.regrid import load_mrms_netcdf
+from py_obj.obj_core import read_object_file, read_match_file
 
-field = load_mrms_netcdf("python_obj/configs/output/interp_mrms/20230401/interp_mrms_20230401_010041.nc")
+field = load_mrms_netcdf("py_obj/configs/output/interp_mrms/20230401/interp_mrms_20230401_010041.nc")
 # field.lat2d, field.lon2d, field.data, field.valid_time
 
-objs = read_object_file("python_obj/configs/output/obj_mrms/obj_obs_20230401_010041.nc")
+objs = read_object_file("py_obj/configs/output/obj_mrms/obj_obs_20230401_010041.nc")
 # objs.objects -> list[StormObject] (centroid, area_km2, max_value, is_linear, track_id, ...)
 # objs.member_ids, objs.member_index -> filter objects down to one member (ensemble files)
 
-matches = read_match_file("python_obj/configs/output/matches/match_20230501_030000.nc")
+matches = read_match_file("py_obj/configs/output/matches/match_20230501_030000.nc")
 for r in matches.records:
     print(r.category, r.truth_id, r.forecast_id, r.ti_score)
 
-from python_obj.histogram import read_histogram_file, sum_histograms, by_hour_of_day
+from py_obj.histogram import read_histogram_file, sum_histograms, by_hour_of_day
 
-hist = read_histogram_file("python_obj/configs/output/hist_mrms/hist_mrms_20230501.nc")
+hist = read_histogram_file("py_obj/configs/output/hist_mrms/hist_mrms_20230501.nc")
 for s in hist.slices:
     print(s.valid_time, s.lead_hours, s.member_id, s.hist.sum())  # lead_hours/member_id are None for MRMS
 

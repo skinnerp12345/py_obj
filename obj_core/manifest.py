@@ -10,7 +10,7 @@ import glob
 import os
 from typing import Callable
 
-from python_obj.regrid import infer_stacked_member_count, load_model_netcdf, read_init_time_only, read_valid_time_only
+from py_obj.regrid import infer_stacked_member_count, load_model_netcdf, read_init_time_only, read_valid_time_only
 
 from .object_io import SeriesEntry
 

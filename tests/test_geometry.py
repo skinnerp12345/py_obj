@@ -1,6 +1,6 @@
 """Step 2 validation: format adapters + the geometry/anisotropy fix.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_geometry.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_geometry.py -v -s
 """
 
 import os
@@ -9,8 +9,8 @@ from datetime import datetime
 import numpy as np
 import pytest
 
-from python_obj.obj_core import boundary_dist_km, build_projected_coords, centroid_dist_km, pixel_area_km2
-from python_obj.regrid import load_mrms_netcdf, load_model_netcdf
+from py_obj.obj_core import boundary_dist_km, build_projected_coords, centroid_dist_km, pixel_area_km2
+from py_obj.regrid import load_mrms_netcdf, load_model_netcdf
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 

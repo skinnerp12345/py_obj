@@ -1,7 +1,7 @@
 # Reference example only -- points at an external dataset not bundled with
 # this repo; adapt the paths to your own directory layout.
 #
-# Demonstrates python_obj.batch_config.expand_batch_config(): ONE config
+# Demonstrates py_obj.batch_config.expand_batch_config(): ONE config
 # file expands into many per-case config files (one per date), instead of
 # hand-writing one YAML per case. input_dir below is an illustrative
 # placeholder path (an HPC-style archive with one date-named directory per

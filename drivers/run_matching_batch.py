@@ -6,17 +6,17 @@ the hardcoded CASE_CONFIGS list below when no template_path argument is
 given):
   1. A template config (with a "cases:" section + "{date}"/"{init_time}"
      placeholders) -- expanded into one materialized config per case via
-     python_obj.batch_config.expand_batch_config(), run, then the
+     py_obj.batch_config.expand_batch_config(), run, then the
      materialized per-case config files are deleted again (NOT the whole
      output directory -- only the specific files this run created) once
      every case has finished, so a later run's temp configs never collide
      with a previous run's leftovers.
   2. A literal list of already-existing per-case config paths -- edit
      CASE_CONFIGS below; this script never discovers cases on its own (see
-     python_obj.batch_runner's module docstring for why).
+     py_obj.batch_runner's module docstring for why).
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching_batch.py \\
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching_batch.py \\
       [template_path] [n_workers]
 
 Both arguments are optional. With no template_path given, falls back to the
@@ -31,9 +31,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.batch_config import expand_batch_config
-from python_obj.batch_runner import run_cases_in_parallel
-from python_obj.drivers.run_matching import run_one_case
+from py_obj.batch_config import expand_batch_config
+from py_obj.batch_runner import run_cases_in_parallel
+from py_obj.drivers.run_matching import run_one_case
 
 # Fallback list used only when no template_path is given on the command line.
 CASE_CONFIGS = [

@@ -1,4 +1,4 @@
-# SAMPLE CONFIG -- used by python_obj/notebooks/histogram_tutorial.ipynb:
+# SAMPLE CONFIG -- used by py_obj/notebooks/histogram_tutorial.ipynb:
 # builds a per-day MRMS composite-reflectivity distribution and a per-forecast
 # MPAS distribution from the bundled sample_data/mpas_case/ (the same real
 # data config_sample_mpas.yaml uses), then demonstrates subsetting (an

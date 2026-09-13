@@ -5,14 +5,14 @@ for both modes (model-driven and date-driven). These make real network calls
 max_files so they stay fast, matching this project's established "validate
 against real data" convention.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_fetch_mrms.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_fetch_mrms.py -v -s
 """
 
 import os
 
 import pytest
 
-from python_obj.drivers.fetch_mrms import _expand_date_range, run_one_case
+from py_obj.drivers.fetch_mrms import _expand_date_range, run_one_case
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 WOFS_DIR = os.path.join(SAMPLE_DATA_DIR, "wofs_case", "wofs")

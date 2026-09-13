@@ -1,7 +1,7 @@
 """Step 5 validation: object matching (Total Interest score, global greedy
 assignment), plus match-file I/O and the manifest-driven pipeline.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_matching.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_matching.py -v -s
 """
 
 import glob
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pytest
 
-from python_obj.obj_core import (
+from py_obj.obj_core import (
     MatchResult,
     SeriesEntry,
     identify_objects,
@@ -25,9 +25,19 @@ from python_obj.obj_core import (
     total_interest_area_ratio,
     write_match_file,
 )
-from python_obj.regrid import load_mrms_netcdf, load_model_netcdf
+from py_obj.regrid import load_mrms_netcdf, load_model_netcdf
 
 SAMPLE_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SFE_MATCHES_DIR = os.path.join(REPO_ROOT, "sfe_poster", "sfe_matches")
+NCAR_MPAS_MATCHES_DIR = os.path.join(REPO_ROOT, "ncar_mpas_analysis", "matched_objects_100km")
+_SKIP_NO_SFE_POSTER = pytest.mark.skipif(
+    not os.path.isdir(SFE_MATCHES_DIR), reason="requires the external sfe_poster/sfe_matches/ dataset (not bundled)",
+)
+_SKIP_NO_NCAR_MPAS_ANALYSIS = pytest.mark.skipif(
+    not os.path.isdir(NCAR_MPAS_MATCHES_DIR), reason="requires the external ncar_mpas_analysis/ dataset (not bundled)",
+)
 
 
 def _synthetic_grid(ny=100, nx=100, lat0=30.0, lon0=-100.0, step=0.01):
@@ -135,7 +145,7 @@ def test_real_end_to_end_matching(tmp_path):
     """Generates real truth (MRMS) and forecast (MPAS) object files inline
     from the bundled sample_data/mpas_case/ (3 real hourly times each), rather
     than depending on precomputed test_obj/ output from an earlier session --
-    keeps this test self-contained (no data outside python_obj/)."""
+    keeps this test self-contained (no data outside py_obj/)."""
     mrms_files = sorted(glob.glob(os.path.join(SAMPLE_DATA_DIR, "mpas_case/interp_mrms/20230501/*.nc")))
     mpas_files = sorted(glob.glob(os.path.join(SAMPLE_DATA_DIR, "mpas_case/mpas_mem1/interp_mpas_3km_2023050100_mem1_f00[1-3].nc")))
     assert len(mrms_files) == 3 and len(mpas_files) == 3
@@ -186,7 +196,7 @@ def test_time_tolerance_skip_and_match(tmp_path):
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
 
-    from python_obj.obj_core import IdentificationResult, SeriesEntry, write_object_file
+    from py_obj.obj_core import IdentificationResult, SeriesEntry, write_object_file
 
     data = _blob(50, 50)
     labels, objects = identify_objects(data, gg, thresh_1=20, thresh_2=30, area_thresh_km2=1.0)
@@ -262,6 +272,45 @@ def test_match_file_roundtrip(tmp_path):
     assert contents.n_forecast_source_files == 1
 
 
+# --- Check 5b: backward-compat read of real files predating newer optional
+# fields (truth_system_id/forecast_system_id, centroid_dist_km) -----------------
+
+@_SKIP_NO_SFE_POSTER
+def test_read_match_file_real_sfe_poster_files_missing_system_id_field():
+    """Regression test for a real, blocking bug: every real match file in
+    sfe_poster/sfe_matches/ predates the v2 storm-mode truth_system_id/
+    forecast_system_id fields, and read_match_file() had no hasattr-style
+    fallback for them (unlike object_io.py's equivalent fields) -- raised
+    KeyError on every single one of these files before the fix."""
+    for subdir in ("nowcastnet_vs_mrms", "wofs_vs_mrms", "wofscast_vs_mrms"):
+        d = os.path.join(SFE_MATCHES_DIR, subdir)
+        files = sorted(glob.glob(os.path.join(d, "match_init_*.nc")))
+        assert files, f"expected at least one match file in {d}"
+        contents = read_match_file(files[0])
+        assert len(contents.records) > 0
+        r0 = contents.records[0]
+        assert r0.truth_system_id is None
+        assert r0.forecast_system_id is None
+        print(f"\n[match-check5b] {subdir}: {os.path.basename(files[0])} OK, {len(contents.records)} records")
+
+
+@_SKIP_NO_NCAR_MPAS_ANALYSIS
+def test_read_match_file_real_ncar_mpas_analysis_files_missing_centroid_dist_km():
+    """Regression test for a second, analogous backward-compat gap found
+    while verifying the fix above: ncar_mpas_analysis's real match files
+    also predate the centroid_dist_km field (added later than these files
+    were written), and the float-fields loop had no fallback at all."""
+    files = sorted(glob.glob(os.path.join(NCAR_MPAS_MATCHES_DIR, "match_init_*.nc")))
+    assert files, f"expected at least one match file in {NCAR_MPAS_MATCHES_DIR}"
+    contents = read_match_file(files[0])
+    assert len(contents.records) > 0
+    hit_like = [r for r in contents.records if r.category in ("hit", "truth_extra", "forecast_extra")]
+    assert hit_like, "expected at least one hit-like record to exercise the centroid_dist_km fallback"
+    assert all(r.centroid_dist_km is None for r in hit_like)
+    print(f"\n[match-check5c] {os.path.basename(files[0])} OK, {len(contents.records)} records, "
+          f"centroid_dist_km correctly falls back to None")
+
+
 # --- Check 6: performance sanity check ---------------------------------------
 
 def test_matching_performance_with_large_objects():
@@ -299,7 +348,7 @@ def test_iter_object_slices_lazy_matches_eager_read(tmp_path):
     iter_object_slices(read_object_file(path)) on a real init_snapshot-shaped
     (member AND time dims both present) file -- the shape large ensemble/
     long-forecast cases take, and the one this lazy reader exists for."""
-    from python_obj.obj_core import (
+    from py_obj.obj_core import (
         IdentificationResult, iter_object_slices, iter_object_slices_lazy, read_object_file, write_object_file,
     )
 
@@ -342,7 +391,7 @@ def test_iter_object_slices_lazy_peak_memory_bounded(tmp_path):
     streaming fix."""
     import tracemalloc
 
-    from python_obj.obj_core import IdentificationResult, iter_object_slices_lazy, write_object_file
+    from py_obj.obj_core import IdentificationResult, iter_object_slices_lazy, write_object_file
 
     lat2d, lon2d = _synthetic_grid(ny=300, nx=300)
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -399,7 +448,7 @@ def test_run_matching_series_with_init_snapshot_forecast_matches_per_member_corr
     survives the lazy read: each member's objects must be matched only
     against the correct valid_time's truth, independently per member, with
     no mixing across members or times."""
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -466,7 +515,7 @@ def test_run_matching_series_init_snapshot_consolidates_one_file_per_case(tmp_pa
     whatever list was passed in (the bug this replaces: a real match file
     from the per-time driver was found listing all 133 input truth files for
     a single-hour output)."""
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -522,7 +571,7 @@ def test_run_matching_series_per_time_leaves_init_time_unset(tmp_path):
     """file_grouping='per_time' (the default) never writes init_time -- it
     isn't a well-defined concept there (one output file's forecast valid_time
     need not correspond to any single init_time)."""
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -553,7 +602,7 @@ def test_run_matching_series_init_snapshot_with_jittered_truth_times(tmp_path):
     equality. n_truth_source_files must still resolve correctly (previously
     raised KeyError because the fix looked up the truth file by the
     FORECAST's valid_time instead of the actual matched truth valid_time)."""
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -591,7 +640,7 @@ def test_run_matching_series_init_snapshot_requires_shared_init_time(tmp_path):
     """A clear, named error rather than an ambiguous/wrong output filename if
     forecast_files don't share one common init_time -- real synthetic files
     with genuinely different init_times, not a fake-path shortcut."""
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)
@@ -622,7 +671,7 @@ def test_run_matching_series_init_snapshot_requires_shared_init_time(tmp_path):
 
 
 def test_run_matching_series_unknown_file_grouping_raises(tmp_path):
-    from python_obj.obj_core import IdentificationResult, write_object_file
+    from py_obj.obj_core import IdentificationResult, write_object_file
 
     lat2d, lon2d = _synthetic_grid()
     gg = precompute_grid_geometry(lat2d, lon2d)

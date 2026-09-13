@@ -52,9 +52,9 @@ changes needed; only the discovery/looping strategy differs from
 run_matching.py's whole-directory approach.
 
 Run with:
-  /opt/anaconda3/envs/pysteps_env/bin/python python_obj/drivers/run_matching_per_case.py [path/to/config.yaml]
+  /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/run_matching_per_case.py [path/to/config.yaml]
 
-If no config path is given, uses python_obj/configs/config.yaml.
+If no config path is given, uses py_obj/configs/config.yaml.
 """
 
 import glob
@@ -67,8 +67,8 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
-from python_obj.config import load_config, require_section
-from python_obj.obj_core import MatchingSummary, read_valid_time_range, run_matching_series
+from py_obj.config import load_config, require_section
+from py_obj.obj_core import MatchingSummary, read_valid_time_range, run_matching_series
 
 _FILENAME_TIMESTAMP_RE = re.compile(r"(\d{8})_(\d{6})")
 

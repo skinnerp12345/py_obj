@@ -1,6 +1,6 @@
 """Step 6c validation: generic parallel case runner.
 
-Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest python_obj/tests/test_batch_runner.py -v -s
+Run with: /opt/anaconda3/envs/pysteps_env/bin/python -m pytest py_obj/tests/test_batch_runner.py -v -s
 
 Uses only synthetic, module-level case functions (multiprocessing's spawn
 start method requires case_fn to be picklable, i.e. importable by name --
@@ -9,7 +9,7 @@ a local closure/lambda would fail to pickle).
 
 import time
 
-from python_obj.batch_runner import run_cases_in_parallel
+from py_obj.batch_runner import run_cases_in_parallel
 
 
 def _double(x: int) -> int:
