@@ -710,6 +710,48 @@ def test_storm_mode_classification_merges_and_reclassifies_system():
     assert is_linear_values != {0}, "merged system should be reclassified above cellular -- the whole point of this feature"
 
 
+def test_full_file_grouping_preserves_storm_mode_classification(tmp_path):
+    """Regression for a real bug: run_object_id_series()'s file_grouping="full"
+    branch used to omit storm_mode_classification= from its write_object_file()
+    call (every other grouping already passed it through), so a "full"-grouped
+    output file silently lost the system_id variable and reported
+    storm_mode_classification=False on disk/read-back, even though the
+    underlying identify_objects() call had genuinely merged/reclassified
+    objects into systems. Confirms the round trip now preserves both."""
+    lat2d, lon2d = _synthetic_grid()
+
+    data = np.zeros((60, 60))
+    data[10:13, 5:8] = 50.0
+    data[10:13, 25:28] = 50.0
+    data[10:13, 45:48] = 50.0
+    data[11, 5:48] = np.maximum(data[11, 5:48], 15.0)  # corridor, links all 3 at a lower threshold
+
+    class _Field:
+        def __init__(self, data, lat2d, lon2d, valid_time):
+            self.data, self.lat2d, self.lon2d, self.valid_time = data, lat2d, lon2d, valid_time
+
+    valid_time = datetime(2023, 5, 2, 0, 0, 0)
+    manifest = [SeriesEntry(valid_time=valid_time, filepath="obs", member_id=None)]
+
+    out_full = run_object_id_series(
+        manifest, lambda entry: _Field(data, lat2d, lon2d, valid_time),
+        thresh_1=20.0, thresh_2=30.0, area_thresh_km2=1.0,
+        output_dir=str(tmp_path / "full"), file_grouping="full",
+        linear_eccentricity_thresh=0.3, linear_length_thresh_km=50.0,
+        mixed_eccentricity_thresh=0.2, mixed_length_thresh_km=30.0,
+        storm_mode_classification=True, system_boundary_thresh=10.0,
+    )
+    assert len(out_full) == 1
+    c_full = read_object_file(out_full[0])
+    print(f"\n[id-check-full-storm-mode] storm_mode_classification={c_full.storm_mode_classification}, "
+          f"system_ids={[o.system_id for o in c_full.objects]}, is_linear={[o.is_linear for o in c_full.objects]}")
+    assert c_full.storm_mode_classification is True
+    assert len(c_full.objects) == 3
+    system_ids = {o.system_id for o in c_full.objects}
+    assert len(system_ids) == 1 and None not in system_ids, "all 3 objects must share one system_id after round-tripping through a 'full' file"
+    assert {o.is_linear for o in c_full.objects} != {0}, "merged system should be reclassified above cellular"
+
+
 def test_storm_mode_classification_singleton_system_is_a_no_op():
     """A single isolated object at system_boundary_thresh (no neighbors to
     merge with) still gets a system_id (per the documented "trivially reduces

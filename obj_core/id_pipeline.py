@@ -197,6 +197,7 @@ def run_object_id_series(
             n_source_files=len(manifest),
             thresh_1=thresh_1, thresh_2=thresh_2, area_thresh_km2=area_thresh_km2,
             tracked=track_in_time, track_bound_disp_km=track_bound_disp_km if track_in_time else None,
+            storm_mode_classification=storm_mode_classification,
         )
         output_paths.append(path)
 
