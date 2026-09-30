@@ -264,3 +264,12 @@ template. See `config_batch_template.yaml` and
 | `init_time_range` | [str, str] \| null | `null` | `[start, end]` `HHMM` range, expanded contiguously by `init_time_step_minutes`. Mutually exclusive with `init_times`. |
 | `init_time_step_minutes` | int | *required with `init_time_range`* | Step size (minutes) for `init_time_range`'s generator. |
 | `init_time_format` | str | `"%H%M"` | Format used when substituting `{init_time}` into path fields. |
+
+Materialized per-case configs are written to a private subdirectory of the
+driver's output directory, one per invocation:
+`<template_stem>_<hash8>_<timestamp>_<random>/`. Here `hash8` is taken from
+the template's path and content. Concurrent batch runs therefore never
+overwrite or clean up each other's configs. That covers different templates,
+a template edited between launches, and even the identical template launched
+twice. Each `*_batch.py` driver deletes only its own subdirectory when it
+finishes (`ExpandedBatchConfig.config_dir`).

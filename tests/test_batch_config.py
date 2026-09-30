@@ -187,7 +187,7 @@ def test_explicit_init_times_list_expands_cross_product(tmp_path):
     labels = {os.path.basename(p) for p in expanded.case_paths}
     assert labels == {"config_20230501_0000.yaml", "config_20230501_1900.yaml"}
 
-    cfg = load_config(str(tmp_path / "materialized" / "config_20230501_1900.yaml"))
+    cfg = load_config(os.path.join(expanded.config_dir, "config_20230501_1900.yaml"))
     assert cfg.histogram_model.input_dir == str(tmp_path / "cases" / "20230501" / "1900")
     assert cfg.histogram_model.output_dir.endswith(os.path.join("hist_model", "20230501_1900"))
 
@@ -250,6 +250,61 @@ def test_omitting_init_times_preserves_date_only_labels(tmp_path):
     template_path = _write_template(tmp_path, 'cases:\n  dates: ["20230501"]\n')
     expanded = expand_batch_config(template_path, output_dir=str(tmp_path / "materialized"))
     assert os.path.basename(expanded.case_paths[0]) == "config_20230501.yaml"
+
+
+# --- Per-run private config directory (concurrent-run collision fix) -------
+
+def _one_case_dir(tmp_path):
+    case_dir = tmp_path / "cases" / "20230501" / "mem1"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    _write_model_file(str(case_dir / "f001.nc"))
+
+
+def test_config_dir_is_private_subdirectory_named_by_template(tmp_path):
+    _one_case_dir(tmp_path)
+    template_path = _write_template(tmp_path, 'cases:\n  dates: ["20230501"]\n')
+    out = tmp_path / "materialized"
+    expanded = expand_batch_config(template_path, output_dir=str(out))
+
+    assert os.path.dirname(expanded.config_dir) == str(out)
+    assert os.path.basename(expanded.config_dir).startswith("template_")
+    assert os.path.dirname(expanded.case_paths[0]) == expanded.config_dir
+    assert not os.path.exists(out / "config_20230501.yaml")  # never written into the shared dir
+
+
+def test_two_different_templates_same_dates_never_collide(tmp_path):
+    _one_case_dir(tmp_path)
+    out = str(tmp_path / "materialized")
+    t_a = _write_template(tmp_path, 'cases:\n  dates: ["20230501"]\n', extra_output_dir="output/sys_a")
+    exp_a = expand_batch_config(t_a, output_dir=out)
+    t_b = str(tmp_path / "template_b.yaml")
+    with open(t_a) as fh:
+        content_a = fh.read()
+    with open(t_b, "w") as fh:
+        fh.write(content_a.replace("output/sys_a", "output/sys_b"))
+    exp_b = expand_batch_config(t_b, output_dir=out)
+
+    assert exp_a.config_dir != exp_b.config_dir
+    assert exp_a.case_paths[0] != exp_b.case_paths[0]
+    # Run A's config still says sys_a after run B expanded -- the real failure mode was silent overwrite.
+    assert load_config(exp_a.case_paths[0]).histogram_model.output_dir.endswith(os.path.join("sys_a", "20230501"))
+    assert load_config(exp_b.case_paths[0]).histogram_model.output_dir.endswith(os.path.join("sys_b", "20230501"))
+
+
+def test_identical_template_expanded_twice_gets_two_directories(tmp_path):
+    _one_case_dir(tmp_path)
+    out = str(tmp_path / "materialized")
+    template_path = _write_template(tmp_path, 'cases:\n  dates: ["20230501"]\n')
+    exp_1 = expand_batch_config(template_path, output_dir=out)
+    exp_2 = expand_batch_config(template_path, output_dir=out)
+
+    assert exp_1.config_dir != exp_2.config_dir
+    # Same template -> same "<stem>_<hash8>_" prefix, only the per-run suffix differs.
+    prefix_1 = "_".join(os.path.basename(exp_1.config_dir).split("_")[:2])
+    prefix_2 = "_".join(os.path.basename(exp_2.config_dir).split("_")[:2])
+    assert prefix_1 == prefix_2
+    with open(exp_1.case_paths[0]) as f1, open(exp_2.case_paths[0]) as f2:
+        assert f1.read() == f2.read()
 
 
 # --- Check 4: real end-to-end against the bundled sample_data + run_cases_in_parallel

@@ -56,7 +56,9 @@ entry is labeled "{date}" (date-only expansion) or "{date}_{init_time}"
 (cross-product expansion), matching the materialized output filename.
 """
 
+import hashlib
 import os
+import tempfile
 from dataclasses import dataclass, fields, replace
 from datetime import datetime, timedelta
 
@@ -87,6 +89,7 @@ class ExpandedBatchConfig:
     case_paths: list  # list[str] -- materialized config paths, ready to run
     skipped_no_directory: list  # list[str] -- case labels ("{date}" or "{date}_{init_time}") whose case directory doesn't exist at all
     skipped_no_files: list  # list[str] -- case labels whose case directory exists but contains no files
+    config_dir: str  # this invocation's own private directory holding case_paths -- safe to delete as a whole once done
 
 
 def _parse_date_range(start_str: str, end_str: str, date_format: str, template_path: str) -> list:
@@ -212,6 +215,33 @@ def _to_yaml_safe(value):
     return value
 
 
+def _make_run_config_dir(template_path: str, output_dir: str) -> str:
+    """Creates this invocation's own private subdirectory of output_dir:
+    `<template_stem>_<hash8>_<YYYYmmddTHHMMSS>_<random>/`, where hash8 is a
+    SHA-1 of the template's absolute path + file content and <random> comes
+    from tempfile.mkdtemp (atomic, guaranteed-unique creation -- unlike a
+    pid, which repeats within one process and can collide across machines
+    sharing a filesystem).
+
+    Every materialized per-case config is written here, never directly into
+    the shared output_dir -- two batch runs going at once (different
+    templates, the same template edited between launches, or even the
+    identical template launched twice) each get their own directory, so one
+    run can never overwrite or clean up another run's still-in-use configs
+    (workers read their config paths lazily, so a shared filename would let
+    one run silently load the other's config). The stem/hash/timestamp prefix
+    keeps a crash-orphaned directory identifiable.
+    """
+    abs_path = os.path.abspath(template_path)
+    with open(abs_path, "rb") as fh:
+        content = fh.read()
+    hash8 = hashlib.sha1(abs_path.encode() + b"\0" + content).hexdigest()[:8]
+    stem = os.path.splitext(os.path.basename(abs_path))[0]
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    os.makedirs(output_dir, exist_ok=True)
+    return tempfile.mkdtemp(prefix=f"{stem}_{hash8}_{stamp}_", dir=output_dir)
+
+
 def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchConfig:
     """Expands one template config (see module docstring) into one
     materialized config file per case -- one per date, or one per (date,
@@ -222,7 +252,7 @@ def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchCon
     dates, init_times = _parse_cases_section(template_path)
     cfg: Config = load_config(template_path)  # fully parsed + path-resolved (relative to template_path's own dir)
 
-    os.makedirs(output_dir, exist_ok=True)
+    config_dir = _make_run_config_dir(template_path, output_dir)
 
     case_paths = []
     skipped_no_directory = []
@@ -264,7 +294,7 @@ def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchCon
             name: _to_yaml_safe({f.name: getattr(section, f.name) for f in fields(section)})
             for name, section in substituted_sections.items() if section is not None
         }
-        out_path = os.path.join(output_dir, f"config_{case_label}.yaml")
+        out_path = os.path.join(config_dir, f"config_{case_label}.yaml")
         with open(out_path, "w") as fh:
             yaml.safe_dump(out_yaml, fh, sort_keys=False)
         case_paths.append(out_path)
@@ -276,4 +306,5 @@ def expand_batch_config(template_path: str, output_dir: str) -> ExpandedBatchCon
 
     return ExpandedBatchConfig(
         case_paths=case_paths, skipped_no_directory=skipped_no_directory, skipped_no_files=skipped_no_files,
+        config_dir=config_dir,
     )

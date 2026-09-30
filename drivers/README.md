@@ -391,6 +391,12 @@ template resolve against the template file's own directory, exactly like
 every other config in this project — this happens *before* `"{date}"`
 substitution, so it's still correct even though the materialized per-case
 files live in a different output directory than the template itself.
+Each call writes its materialized configs into its own private subdirectory
+(`expanded.config_dir`, named `<template_stem>_<hash8>_<timestamp>_<random>`).
+Two batch runs going at once, even from the same template, can therefore
+never overwrite each other's per-case configs. Remove that one directory when
+done (`shutil.rmtree(expanded.config_dir)`), which is what every `*_batch.py`
+driver does.
 
 ## Reading the output
 

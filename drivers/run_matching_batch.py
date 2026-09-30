@@ -7,10 +7,10 @@ given):
   1. A template config (with a "cases:" section + "{date}"/"{init_time}"
      placeholders) -- expanded into one materialized config per case via
      py_obj.batch_config.expand_batch_config(), run, then the
-     materialized per-case config files are deleted again (NOT the whole
-     output directory -- only the specific files this run created) once
-     every case has finished, so a later run's temp configs never collide
-     with a previous run's leftovers.
+     materialized per-case config files are deleted again once every case
+     has finished. Each run writes them into its own private subdirectory
+     (see expand_batch_config()), so concurrent runs never collide and
+     cleanup only ever removes this run's own directory.
   2. A literal list of already-existing per-case config paths -- edit
      CASE_CONFIGS below; this script never discovers cases on its own (see
      py_obj.batch_runner's module docstring for why).
@@ -25,6 +25,7 @@ without any command-line arguments).
 """
 
 import os
+import shutil
 import sys
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,8 +72,6 @@ if __name__ == "__main__":
         run_cases_in_parallel(case_configs, run_one_case, n_workers=n_workers)
     finally:
         if expanded is not None:
-            for p in expanded.case_paths:
-                if os.path.exists(p):
-                    os.remove(p)
-            print(f"Cleaned up {len(expanded.case_paths)} materialized temp config file(s) under "
-                  f"'{os.path.dirname(expanded.case_paths[0]) if expanded.case_paths else '(none written)'}'")
+            shutil.rmtree(expanded.config_dir, ignore_errors=True)
+            print(f"Cleaned up this run's {len(expanded.case_paths)} materialized temp config file(s): "
+                  f"removed '{expanded.config_dir}'")
