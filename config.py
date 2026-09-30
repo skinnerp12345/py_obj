@@ -39,6 +39,8 @@ from dataclasses import dataclass
 
 import yaml
 
+from py_obj.filename_time import validate_filename_time_options
+
 _VALID_MASKS = ("none", "conus", "conus_east")
 _VALID_FILE_GROUPINGS = ("single", "member_series", "ensemble_snapshot", "full", "init_snapshot")
 _VALID_LEAD_UNITS = ("hours", "minutes", "seconds")
@@ -141,6 +143,16 @@ class ModelConfig:
     valid_time_var: str | None = None  # CF-convention time coordinate variable override -- for a source
                                         # whose global valid_time attribute is known-unreliable (real
                                         # confirmed case: WoFSCast), takes precedence over valid_time_attr
+    # Opt-in: derive valid_time (and init_time) from each file's NAME rather
+    # than its metadata, for sources whose internal time metadata is
+    # unreliable -- see py_obj.filename_time for the template syntax
+    # (e.g. WoFS: "wofs_*_*_{init:%Y%m%d_%H%M}_{valid:%H%M}.nc"). Wins over
+    # every metadata-based time mode when set.
+    filename_time_template: str | None = None
+    # Integer minutes SUBTRACTED from the filename init time (only with
+    # filename_time_template), e.g. 20 for WoFSCast initialized 20 min after
+    # its parent WoFS run. Valid time is never shifted.
+    init_time_offset_minutes: int | None = None
     mask: str = "none"
     track: bool = False
     track_distance_km: float = 0.0
@@ -200,6 +212,7 @@ class FetchMrmsConfig:
     lead_attr: str | None = None
     lead_units: str = "hours"
     init_format: str | None = None
+    filename_time_template: str | None = None  # opt-in: valid_time from the model file's NAME -- see ModelConfig
     tolerance_minutes: float = 5.0
     # Date-driven mode: 'dates' (explicit list of YYYYMMDD strings) or
     # 'date_range' (inclusive [start, end] YYYYMMDD pair, expanded to daily
@@ -266,6 +279,16 @@ class HistogramModelConfig:
     valid_time_var: str | None = None  # CF-convention time coordinate variable override -- see
                                         # ModelConfig's field of the same name for the real case this
                                         # was added for (a WoFSCast global-attribute bug)
+    # Opt-in: derive valid_time (and init_time) from each file's NAME rather
+    # than its metadata, for sources whose internal time metadata is
+    # unreliable -- see py_obj.filename_time for the template syntax
+    # (e.g. WoFS: "wofs_*_*_{init:%Y%m%d_%H%M}_{valid:%H%M}.nc"). Wins over
+    # every metadata-based time mode when set.
+    filename_time_template: str | None = None  # see ModelConfig
+    # Integer minutes SUBTRACTED from the filename init time (only with
+    # filename_time_template), e.g. 20 for WoFSCast initialized 20 min after
+    # its parent WoFS run. Valid time is never shifted.
+    init_time_offset_minutes: int | None = None
     # Only used to derive lead_hours in the valid_time_attr time-mode (the
     # init_attr/lead_attr mode already has a direct lead-time number to read
     # instead) -- the name of the file's own init-time string attribute,
@@ -381,15 +404,20 @@ def _validate_time_mode(section: dict, section_name: str) -> None:
     confirmed WoFSCast bug) counts as its own independent mode here, not a
     dependent add-on to valid_time_attr -- a caller using only valid_time_var
     shouldn't be forced to also supply an unused/irrelevant valid_time_attr
-    just to satisfy this check."""
+    just to satisfy this check. filename_time_template (valid/init time from
+    the file's NAME) is a fourth independent mode on the same footing."""
     has_string_mode = "valid_time_attr" in section
     has_arith_mode = all(k in section for k in ("init_attr", "lead_attr", "init_format"))
     has_cf_var_mode = "valid_time_var" in section
-    if not (has_string_mode or has_arith_mode or has_cf_var_mode):
+    has_filename_mode = "filename_time_template" in section
+    if not (has_string_mode or has_arith_mode or has_cf_var_mode or has_filename_mode):
         raise ValueError(
             f"Config section '{section_name}' needs one of: 'valid_time_attr'+'valid_time_format', "
-            f"'init_attr'+'lead_attr'+'init_format', or 'valid_time_var'."
+            f"'init_attr'+'lead_attr'+'init_format', 'valid_time_var', or 'filename_time_template'."
         )
+    validate_filename_time_options(
+        section.get("filename_time_template"), section.get("init_time_offset_minutes"), f"Config section '{section_name}'",
+    )
     if ("valid_time_attr" in section) != ("valid_time_format" in section):
         raise ValueError(
             f"Config section '{section_name}': 'valid_time_attr' and 'valid_time_format' "
@@ -547,6 +575,8 @@ def load_config(path: str) -> Config:
                 "valid_time_attr": None,
                 "valid_time_format": None,
                 "valid_time_var": None,
+                "filename_time_template": None,
+                "init_time_offset_minutes": None,
                 "init_time_attr": "init_time",
             },
         )
@@ -612,6 +642,7 @@ def load_config(path: str) -> Config:
             lead_attr=fetch_mrms_section.get("lead_attr"),
             lead_units=fetch_mrms_section.get("lead_units", "hours"),
             init_format=fetch_mrms_section.get("init_format"),
+            filename_time_template=fetch_mrms_section.get("filename_time_template"),
             tolerance_minutes=fetch_mrms_section.get("tolerance_minutes", 5.0),
             dates=list(fetch_mrms_section["dates"]) if "dates" in fetch_mrms_section else None,
             date_range=tuple(date_range) if date_range is not None else None,
@@ -666,6 +697,8 @@ def load_config(path: str) -> Config:
             valid_time_attr=hist_model_section.get("valid_time_attr"),
             valid_time_format=hist_model_section.get("valid_time_format"),
             valid_time_var=hist_model_section.get("valid_time_var"),
+            filename_time_template=hist_model_section.get("filename_time_template"),
+            init_time_offset_minutes=hist_model_section.get("init_time_offset_minutes"),
             init_time_attr=hist_model_section.get("init_time_attr", "init_time"),
             output_dir=hist_model_section.get("output_dir", "output/hist_model"),
             mask=hist_model_section.get("mask", "none"),

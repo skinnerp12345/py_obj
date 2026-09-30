@@ -6,6 +6,8 @@ from typing import Callable
 import netCDF4
 import numpy as np
 
+from py_obj.filename_time import parse_filename_times
+
 from .grid_spec import GridSpec
 from .io_mrms import GriddedField
 
@@ -175,7 +177,7 @@ def _decode_cf_time_var(ds: netCDF4.Dataset, filepath: str, valid_time_var: str)
 
 
 def _resolve_valid_time(
-    ds: netCDF4.Dataset,
+    ds: netCDF4.Dataset | None,  # None only when filename_time_template alone is used
     filepath: str,
     valid_time: datetime | None,
     init_attr: str,
@@ -186,6 +188,7 @@ def _resolve_valid_time(
     valid_time_format: str | None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None,
     valid_time_var: str | None = None,
+    filename_time_template: str | None = None,
 ) -> datetime:
     """Shared valid_time derivation for load_model_netcdf()/read_valid_time_only().
 
@@ -198,17 +201,22 @@ def _resolve_valid_time(
          convention that fits neither of the built-in modes below.
          Exceptions raised inside it propagate uncaught (it's the caller's
          own logic; not this function's job to guess what went wrong).
-      3. `valid_time_var` -- a CF-convention time coordinate variable (see
+      3. `filename_time_template` -- parse valid time from the file's own
+         NAME, not its metadata (see py_obj/filename_time.py). Opt-in, for sources
+         whose internal time metadata is unreliable; an explicitly-set
+         template wins over every metadata-based mode below. Never falls
+         back to metadata if the filename doesn't match -- raises instead.
+      4. `valid_time_var` -- a CF-convention time coordinate variable (see
          _decode_cf_time_var()). Deliberately placed above the global-
          attribute string mode below: a caller who explicitly sets this
          knows their file's global valid_time attribute is unreliable (the
          real, confirmed WoFSCast case this was added for) and wants the
          override to win outright, without needing to also unset
          valid_time_attr for other sources sharing the same config shape.
-      4. `valid_time_attr`+`valid_time_format` -- a ready-made datetime
+      5. `valid_time_attr`+`valid_time_format` -- a ready-made datetime
          STRING global attribute (e.g. WoFS's `valid_time="20260518_230000"`,
          format "%Y%m%d_%H%M%S") -- no init+lead arithmetic needed at all.
-      5. `init_attr`+`lead_attr`+`lead_units`+`init_format` -- the original
+      6. `init_attr`+`lead_attr`+`lead_units`+`init_format` -- the original
          MPAS-style convention: init time + a lead-time NUMBER needing
          `timedelta(**{lead_units: lead_value})` arithmetic. Stays the
          default fallback so existing MPAS callers are unaffected by the
@@ -219,6 +227,15 @@ def _resolve_valid_time(
 
     if valid_time_fn is not None:
         return valid_time_fn(ds)
+
+    if filename_time_template is not None:
+        _, parsed_valid = parse_filename_times(filepath, filename_time_template)
+        if parsed_valid is None:
+            raise ValueError(
+                f"filename_time_template {filename_time_template!r} has no '{{valid:...}}' slot, "
+                f"so it can't supply a valid time for '{filepath}'"
+            )
+        return parsed_valid
 
     if valid_time_var is not None:
         return _decode_cf_time_var(ds, filepath, valid_time_var)
@@ -260,6 +277,7 @@ def load_model_netcdf(
     valid_time_format: str | None = None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None = None,
     valid_time_var: str | None = None,
+    filename_time_template: str | None = None,
     extra_dim_index: int | None = None,
     extra_dim_selector_fn: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> GriddedField:
@@ -275,8 +293,9 @@ def load_model_netcdf(
     `valid_time="20260518_230000"`), then falls back to the original
     init_attr+lead_attr arithmetic (e.g. MPAS test files carry
     `initializationTime="2023050100"` and `forecastHour="12"`). Not parsed
-    from the filename in any mode -- more robust, and generalizes to any
-    similarly-structured model output.
+    from the filename unless filename_time_template is given explicitly
+    (opt-in, for sources whose metadata is known-unreliable; see
+    py_obj.filename_time) -- in which case it wins over every metadata mode.
 
     lead_units ("hours"|"minutes"|"seconds"): only relevant to the
     init_attr/lead_attr fallback mode. The unit `lead_attr`'s raw stored
@@ -312,6 +331,7 @@ def load_model_netcdf(
         valid_time = _resolve_valid_time(
             ds, filepath, valid_time, init_attr, lead_attr, lead_units, init_format,
             valid_time_attr, valid_time_format, valid_time_fn, valid_time_var,
+            filename_time_template,
         )
 
     return GriddedField(lat2d=lat2d, lon2d=lon2d, data=data, valid_time=valid_time, missing_value=missing_value)
@@ -327,6 +347,7 @@ def read_valid_time_only(
     valid_time_format: str | None = None,
     valid_time_fn: Callable[[netCDF4.Dataset], datetime] | None = None,
     valid_time_var: str | None = None,
+    filename_time_template: str | None = None,
 ) -> datetime:
     """Read just a model file's valid_time, without loading its lat/lon grid
     or data variable -- for callers (e.g. a fetch/discovery script) that only
@@ -336,10 +357,17 @@ def read_valid_time_only(
     data. Shares _resolve_valid_time()'s precedence with load_model_netcdf(),
     so any new time-derivation mode is added once, not twice.
     """
+    if filename_time_template is not None and valid_time_fn is None:
+        # Filename mode needs nothing from inside the file -- don't open it.
+        return _resolve_valid_time(
+            None, filepath, None, init_attr, lead_attr, lead_units, init_format,
+            valid_time_attr, valid_time_format, None, valid_time_var, filename_time_template,
+        )
     with netCDF4.Dataset(filepath, "r") as ds:
         return _resolve_valid_time(
             ds, filepath, None, init_attr, lead_attr, lead_units, init_format,
             valid_time_attr, valid_time_format, valid_time_fn, valid_time_var,
+            filename_time_template,
         )
 
 
@@ -350,6 +378,8 @@ def read_init_time_only(
     valid_time_attr: str | None = None,
     valid_time_format: str | None = None,
     init_time_attr: str = "init_time",
+    filename_time_template: str | None = None,
+    init_time_offset_minutes: int | None = None,
 ) -> datetime:
     """Read just a model file's forecast INIT time (not valid_time) -- needed
     to group/name output by forecast case (see obj_core's
@@ -370,7 +400,18 @@ def read_init_time_only(
         HistogramModelConfig.init_time_attr / build_histogram_model.py's
         _compute_lead_hours(), which already relies on this exact
         assumption).
+      - filename_time_template given (opt-in, checked first): init_time is
+        parsed from the file's NAME (see py_obj.filename_time), minus
+        init_time_offset_minutes if given. The file isn't opened at all.
     """
+    if filename_time_template is not None:
+        parsed_init, _ = parse_filename_times(filepath, filename_time_template, init_time_offset_minutes)
+        if parsed_init is None:
+            raise ValueError(
+                f"filename_time_template {filename_time_template!r} has no '{{init:...}}' slot, "
+                f"so it can't supply an init time for '{filepath}'"
+            )
+        return parsed_init
     with netCDF4.Dataset(filepath, "r") as ds:
         if valid_time_attr is not None:
             if not hasattr(ds, init_time_attr):

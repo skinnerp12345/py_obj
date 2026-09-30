@@ -15,13 +15,22 @@ from py_obj.regrid import infer_stacked_member_count, load_model_netcdf, read_in
 from .object_io import SeriesEntry
 
 
-def _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr):
+def _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr,
+                        filename_time_template=None, init_time_offset_minutes=None):
     """init_time is a best-effort addition (file_grouping='init_snapshot' is
     the only current consumer) -- a caller not using that grouping shouldn't
     have their whole manifest build fail just because e.g. init_time_attr is
     absent from this particular file. Returns None (not an error) on any
     read failure; run_object_id_series's init_snapshot branch is what
-    actually enforces init_time being present, for whoever asks for it."""
+    actually enforces init_time being present, for whoever asks for it.
+
+    Exception: with filename_time_template set, a filename that doesn't match
+    the template (or a template with no init slot) is a config error, not a
+    best-effort miss -- it raises rather than silently returning None."""
+    if filename_time_template is not None:
+        return read_init_time_only(
+            f, filename_time_template=filename_time_template, init_time_offset_minutes=init_time_offset_minutes,
+        )
     try:
         return read_init_time_only(
             f, init_attr=init_attr or "initializationTime", init_format=init_format or "%Y%m%d%H",
@@ -49,6 +58,8 @@ def build_model_manifest(
     valid_time_var: str | None = None,
     member_subdir_pattern: str = "*",
     init_time_attr: str = "init_time",
+    filename_time_template: str | None = None,
+    init_time_offset_minutes: int | None = None,
 ) -> tuple[list[SeriesEntry], Callable[..., object]]:
     """Build the (member, time, filepath) manifest run_object_id_series (or
     the histogram driver) needs, plus a matching loader closure.
@@ -93,12 +104,20 @@ def build_model_manifest(
     can't be derived for (e.g. init_time_attr absent) gets init_time=None
     rather than failing the whole manifest build, since most callers
     (anything not using init_snapshot) never look at it.
+
+    filename_time_template/init_time_offset_minutes (opt-in, default off):
+    derive valid_time and init_time from each file's NAME instead of its
+    metadata (see py_obj.filename_time) -- for sources whose internal
+    time metadata is unreliable. init_time_offset_minutes is subtracted from
+    the filename init time only (e.g. WoFSCast initialized 20 min after its
+    parent WoFS run).
     """
     loader = lambda fp, extra_dim_index=None: load_model_netcdf(
         fp,
         varname=var_name, lat_name=lat_name, lon_name=lon_name,
         init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
         valid_time_attr=valid_time_attr, valid_time_format=valid_time_format, valid_time_var=valid_time_var,
+        filename_time_template=filename_time_template,
         extra_dim_index=extra_dim_index,
     )
 
@@ -120,7 +139,10 @@ def build_model_manifest(
                     f"No files matching '{file_pattern}' found under member directory '{member_dir}'"
                 )
             for f in files:
-                init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
+                init_time = _try_read_init_time(
+                    f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr,
+                    filename_time_template, init_time_offset_minutes,
+                )
                 manifest.append(SeriesEntry(
                     valid_time=loader(f).valid_time, filepath=f, member_id=member_id, init_time=init_time,
                 ))
@@ -133,8 +155,12 @@ def build_model_manifest(
                 f,
                 init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
                 valid_time_attr=valid_time_attr, valid_time_format=valid_time_format, valid_time_var=valid_time_var,
+                filename_time_template=filename_time_template,
             )
-            init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
+            init_time = _try_read_init_time(
+                f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr,
+                filename_time_template, init_time_offset_minutes,
+            )
             n_members = infer_stacked_member_count(f, var_name)
             for idx in range(n_members):
                 manifest.append(SeriesEntry(
@@ -146,7 +172,10 @@ def build_model_manifest(
         if not files:
             raise FileNotFoundError(f"No files matching '{file_pattern}' found under '{input_dir}'")
         for f in files:
-            init_time = _try_read_init_time(f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr)
+            init_time = _try_read_init_time(
+                f, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr,
+                filename_time_template, init_time_offset_minutes,
+            )
             manifest.append(SeriesEntry(valid_time=loader(f).valid_time, filepath=f, member_id=None, init_time=init_time))
 
     return manifest, loader

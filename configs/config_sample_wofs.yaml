@@ -86,6 +86,11 @@ model:
   lon_name: xlon
   valid_time_attr: valid_time    # WoFS stores a ready-made "YYYYMMDD_HHMMSS" string, not init+lead arithmetic
   valid_time_format: "%Y%m%d_%H%M%S"
+  # Opt-in alternative when a file's time metadata is unreliable: take init/valid
+  # time from the filename instead (wins over valid_time_attr when set). Valid
+  # HHMM rolls over to the next day past 00 UTC. See CONFIG_REFERENCE.md.
+  # filename_time_template: "wofs_*_*_{init:%Y%m%d_%H%M}_{valid:%H%M}.nc"
+  # init_time_offset_minutes: 20   # e.g. WoFSCast, initialized 20 min after its parent WoFS run
   boundary_threshold: 45.0       # placeholder, same as MPAS -- tune per WoFS's own percentile-matched values
   max_value_threshold: 50.2
   area_threshold_km2: 108.0

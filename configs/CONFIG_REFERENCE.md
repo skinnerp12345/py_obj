@@ -100,6 +100,8 @@ required together.
 | `valid_time_attr` | str \| null | `null` | Global attribute holding a ready-made valid_time string (string time-derivation mode, e.g. WoFS). |
 | `valid_time_format` | str \| null | `null` | `strptime` format for `valid_time_attr`'s value (string mode). |
 | `valid_time_var` | str \| null | `null` | Name of a CF-convention time coordinate variable to decode instead — takes precedence over `valid_time_attr` when a source's global attribute is known-unreliable (real case: WoFSCast). |
+| `filename_time_template` | str \| null | `null` | Opt-in: derive valid time (and init time) from each file's **name** instead of its metadata, for sources whose internal time metadata is unreliable. Wins over every metadata-based mode. See [Filename-derived times](#filename-derived-times-filename_time_template) below. |
+| `init_time_offset_minutes` | int \| null | `null` | Only with `filename_time_template`: integer minutes **subtracted** from the filename init time (e.g. `20` for WoFSCast, initialized 20 min after its parent WoFS run). Valid time is never shifted. |
 | `mask` | str | `"none"` | `none` \| `conus` \| `conus_east` — spatial domain restriction. |
 | `track` | bool | `false` | Whether to track objects in time. |
 | `track_distance_km` | float | `0.0` | Buffer distance for tracking linkage; `0.0` = touching/overlapping only. |
@@ -112,8 +114,46 @@ required together.
 | `object_output_dir` | str | `"output/obj_model"` | Output directory for object files. |
 | `init_time_attr` | str | `"init_time"` | Only used for `file_grouping="init_snapshot"` in string time-mode: the file's own init-time string attribute (read with `valid_time_format`). Unused in arithmetic mode (init_time comes from `init_attr` directly there). |
 
-Exactly one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
-**or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`.
+At least one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
+**or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
+`filename_time_template`. Precedence when several are given: `filename_time_template`
+> `valid_time_var` > `valid_time_attr` > `init_attr`+`lead_attr`.
+
+
+### Filename-derived times (`filename_time_template`)
+
+Available on `model:`, `histogram_model:` and `fetch_mrms:` (model-driven
+mode). Off by default. When set, init and valid time come from each file's
+**name**, and the file's time metadata is ignored. A file whose name doesn't
+match the template raises an error. There is no silent fallback to metadata.
+
+Template syntax, matched against the whole basename:
+
+- `{init:<fmt>}` / `{valid:<fmt>}`: a timestamp slot written with strftime
+  codes (`%Y %m %d %H %M %S %j`).
+- `*`: a wildcard for anything irrelevant (prefix, member/lead index, ...).
+- Everything else is literal text.
+
+WoFS / WoFSCast summary files:
+
+```yaml
+filename_time_template: "wofs_*_*_{init:%Y%m%d_%H%M}_{valid:%H%M}.nc"
+```
+
+- `wofs_ALL_08_20260518_2300_2340.nc` → init 2026-05-18 23:00, valid 2026-05-18 23:40
+- `wofs_ALL_08_20260518_2300_0140.nc` → init 2026-05-18 23:00, valid **2026-05-19** 01:40
+
+**Day rollover:** when the valid slot has no date codes (as in WoFS), its date
+is the init date, plus one day if the valid clock time is earlier than the
+init clock time. This assumes forecasts shorter than 24 h. A valid slot that
+carries its own full date is used as-is.
+
+**`init_time_offset_minutes`** (integer, optional): subtracted from the
+filename init time **after** the rollover is decided, and never from valid
+time. Example for WoFSCast, initialized 20 min after its parent WoFS run:
+`wofs_wofscast_WEB_62_20260506_2220_0310.nc` with offset `20` gives init
+2026-05-06 22:00 and valid 2026-05-07 03:10. `init_snapshot` object files
+and histogram `lead_hours` then use the adjusted init time.
 
 ---
 
@@ -171,6 +211,7 @@ MRMS match to each file in a directory of model output) or **date-driven**
 | `lead_attr` | str \| null | `null` | Arithmetic mode: global attribute holding the lead-time number. |
 | `lead_units` | str | `"hours"` | `hours` \| `minutes` \| `seconds` — unit of `lead_attr`'s raw number (arithmetic mode). |
 | `init_format` | str \| null | `null` | `strptime` format for `init_attr`'s value (arithmetic mode). |
+| `filename_time_template` | str \| null | `null` | Model-driven mode, filename time-derivation: valid time from each model file's name (see `model:`'s field of the same name). |
 | `tolerance_minutes` | float | `5.0` | Maximum allowed gap between a model file's valid_time and the nearest available MRMS timestamp. |
 | `dates` | list[str] \| null | `null` | Date-driven mode: explicit list of `YYYYMMDD` strings. Mutually exclusive with `date_range` and `model_input_dir`. |
 | `date_range` | [str, str] \| null | `null` | Date-driven mode: inclusive `[YYYYMMDD, YYYYMMDD]` range, expanded to daily strings. |
@@ -182,7 +223,7 @@ MRMS match to each file in a directory of model output) or **date-driven**
 
 Model-driven mode additionally requires exactly one time-derivation mode
 (same rule as `model:` above): `valid_time_attr`+`valid_time_format`, or
-`init_attr`+`lead_attr`+`init_format`.
+`init_attr`+`lead_attr`+`init_format`, or `filename_time_template`.
 
 ---
 
@@ -232,6 +273,8 @@ rationale as `histogram_observations:` above.
 | `valid_time_attr` | str \| null | `null` | String time-derivation mode: global attribute holding a ready-made valid_time string. |
 | `valid_time_format` | str \| null | `null` | `strptime` format for `valid_time_attr`'s value. |
 | `valid_time_var` | str \| null | `null` | CF-convention time coordinate variable override (see `model:`'s field of the same name). |
+| `filename_time_template` | str \| null | `null` | See `model:`'s field of the same name. When set, `lead_hours` = filename valid time − (offset-adjusted) filename init time. |
+| `init_time_offset_minutes` | int \| null | `null` | See `model:`'s field of the same name. |
 | `init_time_attr` | str | `"init_time"` | Only used to derive `lead_hours` in string time-mode: the file's own init-time string attribute, read with `valid_time_format`. Unused in arithmetic mode. |
 | `output_dir` | str | `"output/hist_model"` | Output directory for histogram files. |
 | `mask` | str | `"none"` | `none` \| `conus` \| `conus_east` — spatial domain restriction (excluded, not zeroed). |
@@ -241,8 +284,10 @@ rationale as `histogram_observations:` above.
 | `edge_trim` | int | `7` | Pixels trimmed from each grid edge before histogramming. |
 | `clip_negative_to_zero` | bool | `false` | See `histogram_observations:`'s field of the same name. |
 
-Exactly one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
-**or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`.
+At least one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
+**or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
+`filename_time_template`. Precedence when several are given: `filename_time_template`
+> `valid_time_var` > `valid_time_attr` > `init_attr`+`lead_attr`.
 
 ---
 

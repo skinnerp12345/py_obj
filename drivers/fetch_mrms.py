@@ -168,6 +168,7 @@ def _run_model_driven(fm: FetchMrmsConfig) -> FetchSummary:
                 init_format=fm.init_format or "%Y%m%d%H",
                 valid_time_attr=fm.valid_time_attr,
                 valid_time_format=fm.valid_time_format,
+                filename_time_template=fm.filename_time_template,
             )
         except Exception as exc:  # noqa: BLE001 -- one file's failure never aborts the run
             results.append(FetchFileResult(

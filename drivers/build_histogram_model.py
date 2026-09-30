@@ -31,6 +31,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import HistogramModelConfig, load_config, require_section
+from py_obj.filename_time import parse_filename_times
 from py_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
 from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
 
@@ -44,7 +45,20 @@ def _compute_lead_hours(filepath: str, hist_cfg: HistogramModelConfig) -> float 
     both the init_time-equivalent and valid_time string attributes (same
     format) and takes their difference. Returns None (not an error) if
     neither is derivable for this file -- the slice is still valid, it just
-    won't match any by_lead_hours_range() predicate later."""
+    won't match any by_lead_hours_range() predicate later.
+
+    filename_time_template (opt-in) is checked first: lead = filename valid
+    time minus filename init time (after init_time_offset_minutes), so an
+    offset system (e.g. WoFSCast) lines up with its parent's lead times. A
+    template with both slots always yields a lead; a non-matching filename
+    raises (as it already would have during manifest building)."""
+    if hist_cfg.filename_time_template is not None:
+        init_dt, valid_dt = parse_filename_times(
+            filepath, hist_cfg.filename_time_template, hist_cfg.init_time_offset_minutes,
+        )
+        if init_dt is not None and valid_dt is not None:
+            return (valid_dt - init_dt).total_seconds() / 3600.0
+
     with netCDF4.Dataset(filepath, "r") as ds:
         if hist_cfg.lead_attr is not None and hasattr(ds, hist_cfg.lead_attr):
             lead_value = float(getattr(ds, hist_cfg.lead_attr))
@@ -72,6 +86,8 @@ def run_one_case(config_path: str) -> str:
         valid_time_attr=hist_cfg.valid_time_attr, valid_time_format=hist_cfg.valid_time_format,
         valid_time_var=hist_cfg.valid_time_var,
         member_subdir_pattern=hist_cfg.member_subdir_pattern,
+        filename_time_template=hist_cfg.filename_time_template,
+        init_time_offset_minutes=hist_cfg.init_time_offset_minutes,
     )
     print(
         f"Found {len(manifest)} manifest entries under '{hist_cfg.input_dir}' "

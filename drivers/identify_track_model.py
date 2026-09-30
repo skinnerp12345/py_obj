@@ -39,6 +39,8 @@ def build_manifest(model: ModelConfig):
         valid_time_var=model.valid_time_var,
         member_subdir_pattern=model.member_subdir_pattern,
         init_time_attr=model.init_time_attr,
+        filename_time_template=model.filename_time_template,
+        init_time_offset_minutes=model.init_time_offset_minutes,
     )
 
 
