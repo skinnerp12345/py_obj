@@ -45,7 +45,8 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import FetchMrmsConfig, load_config, require_section
-from py_obj.regrid import read_valid_time_only
+from py_obj.filename_time import parse_filename_times
+from py_obj.regrid import read_grib2_times, read_valid_time_only
 from py_obj.time_utils import nearest_within_tolerance
 
 _S3_NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
@@ -160,16 +161,20 @@ def _run_model_driven(fm: FetchMrmsConfig) -> FetchSummary:
 
     for fp in model_files:
         try:
-            valid_time = read_valid_time_only(
-                fp,
-                init_attr=fm.init_attr or "initializationTime",
-                lead_attr=fm.lead_attr or "forecastHour",
-                lead_units=fm.lead_units,
-                init_format=fm.init_format or "%Y%m%d%H",
-                valid_time_attr=fm.valid_time_attr,
-                valid_time_format=fm.valid_time_format,
-                filename_time_template=fm.filename_time_template,
-            )
+            if fm.file_format == "grib2":
+                valid_time = (parse_filename_times(fp, fm.filename_time_template)[1] if fm.filename_time_template
+                              else read_grib2_times(fp, var_name=fm.var_name, grib_selector=fm.grib_selector)[1])
+            else:
+                valid_time = read_valid_time_only(
+                    fp,
+                    init_attr=fm.init_attr or "initializationTime",
+                    lead_attr=fm.lead_attr or "forecastHour",
+                    lead_units=fm.lead_units,
+                    init_format=fm.init_format or "%Y%m%d%H",
+                    valid_time_attr=fm.valid_time_attr,
+                    valid_time_format=fm.valid_time_format,
+                    filename_time_template=fm.filename_time_template,
+                )
         except Exception as exc:  # noqa: BLE001 -- one file's failure never aborts the run
             results.append(FetchFileResult(
                 model_input_path=fp, model_valid_time=None, mrms_key=None, mrms_local_path=None,

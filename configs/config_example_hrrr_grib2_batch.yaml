@@ -1,0 +1,50 @@
+# EXAMPLE BATCH TEMPLATE (namelist): object identification for deterministic
+# HRRR GRIB2 forecasts, one object file per initialization.
+#
+# Reference example only -- points at an external archive not bundled with this
+# repo; adapt input_dir / object_output_dir to your own layout.
+#
+#   Archive:  /raid/hrefv2/YYYYMMDD/  (many .grib2 files per day)
+#   Files:    hrrr_ncep_YYYYMMDDHHfnnn...   HH = init hour, nnn = forecast hour
+#   Wanted:   2026-04-01 .. 2026-08-31, 00/06/12/18Z inits, f000-f048,
+#             composite reflectivity (REFC), eastern 2/3 CONUS
+#
+# Run (expands one config per (date, init time) and runs them in parallel):
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/identify_track_model_batch.py \
+#       py_obj/configs/config_example_hrrr_grib2_batch.yaml [n_workers]
+#
+# A (date, init) whose directory is missing is skipped and reported; one with no
+# matching files fails that case only (reported), never the whole batch.
+
+cases:
+  date_range: ["20260401", "20260831"]   # inclusive, one case per day ...
+  date_format: "%Y%m%d"
+  init_times: ["00", "06", "12", "18"]   # ... x these four initialization hours
+  init_time_format: "%H"                 # {init_time} is substituted as HH
+
+model:
+  file_format: grib2              # read the forecasts straight from GRIB2
+  var_name: REFC                  # composite reflectivity; the built-in preset matches HRRR's
+                                  # 0/16/196 (and RRFS's 0/16/5) -- exactly one record must match.
+                                  # For another field/encoding, give grib_selector: {pygrib keys}.
+  input_dir: /raid/hrefv2/{date}
+  # f000-f048 of the {date} {init_time}Z run. One glob character class can't stop at 48,
+  # so this also matches f049 if present -- HRRR's 00/06/12/18Z runs end at f048.
+  file_pattern: "hrrr_ncep_{date}{init_time}f0[0-4][0-9]*"
+  member_subdirs: false           # deterministic: one forecast per file, no members
+  # No lat_name/lon_name or time fields: GRIB2 carries its own grid and init/valid
+  # times (analDate/validDate), so the NetCDF-only options are not used (and are rejected).
+  boundary_threshold: 45.0        # PLACEHOLDER dBZ thresholds -- set from HRRR's own
+  max_value_threshold: 50.0       # matched-percentile values (see histogram example below)
+  area_threshold_km2: 108.0
+  mask: conus_east                # eastern 2/3 CONUS (cells >100 km outside the US, and west of -105, masked)
+  track: false                    # set true to track objects through each forecast
+  track_distance_km: 0.0
+  file_grouping: init_snapshot    # ONE output file per initialization, every forecast hour inside
+  object_output_dir: /raid/hrefv2_objects/hrrr   # files are named obj_init_<init time>.nc, unique per run
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

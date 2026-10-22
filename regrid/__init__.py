@@ -1,4 +1,5 @@
 from .grid_builder import build_corner_spacing_grid
+from .io_grib import GRIB2_FIELD_PRESETS, load_grib2_grid, load_model_grib2, read_grib2_times, resolve_grib_selector
 from .grid_spec import CoverageReport, GridSpec, check_coverage, crop_to_bbox, estimate_cell_corners, grid_hash
 from .io_grid import infer_stacked_member_count, load_model_netcdf, load_target_grid, read_init_time_only, read_valid_time_only
 from .io_mrms import (
@@ -32,6 +33,11 @@ __all__ = [
     "grid_hash",
     "load_target_grid",
     "load_model_netcdf",
+    "GRIB2_FIELD_PRESETS",
+    "load_model_grib2",
+    "read_grib2_times",
+    "load_grib2_grid",
+    "resolve_grib_selector",
     "read_valid_time_only",
     "read_init_time_only",
     "infer_stacked_member_count",

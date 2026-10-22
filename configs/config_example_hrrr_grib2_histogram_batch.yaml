@@ -1,0 +1,31 @@
+# EXAMPLE BATCH TEMPLATE (namelist): composite reflectivity histograms for
+# deterministic HRRR GRIB2 forecasts -- one histogram file per initialization,
+# one slice per forecast hour (for matched-percentile object thresholds).
+#
+# Same cases and file selection as config_example_hrrr_grib2_batch.yaml.
+# Reference example only -- adapt input_dir / output_dir to your own layout.
+#
+# Run:
+#   /opt/anaconda3/envs/pysteps_env/bin/python py_obj/drivers/build_histogram_model_batch.py \
+#       py_obj/configs/config_example_hrrr_grib2_histogram_batch.yaml [n_workers]
+
+cases:
+  date_range: ["20260401", "20260831"]
+  date_format: "%Y%m%d"
+  init_times: ["00", "06", "12", "18"]
+  init_time_format: "%H"
+
+histogram_model:
+  file_format: grib2
+  var_name: REFC                  # see config_example_hrrr_grib2_batch.yaml
+  input_dir: /raid/hrefv2/{date}
+  file_pattern: "hrrr_ncep_{date}{init_time}f0[0-4][0-9]*"   # f000-f048 (HRRR's 00/06/12/18Z runs end at f048)
+  member_subdirs: false
+  mask: conus_east                # same domain as the object identification
+  # Each init gets its own subdirectory: histogram files are named by their first
+  # valid time, which can be shared by different runs' files.
+  output_dir: /raid/hrefv2_histograms/hrrr/{date}_{init_time}
+  bin_min: -20.0                  # HRRR's no-echo floor is -10 dB (RRFS: -20 dB); values
+  bin_max: 80.0                   # outside [bin_min, bin_max] are clamped into the end bins
+  bin_width: 0.2
+  edge_trim: 7

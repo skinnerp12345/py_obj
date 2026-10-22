@@ -40,10 +40,15 @@ from dataclasses import dataclass
 import yaml
 
 from py_obj.filename_time import validate_filename_time_options
+from py_obj.grib2_fields import resolve_grib_selector
 
 _VALID_MASKS = ("none", "conus", "conus_east")
 _VALID_FILE_GROUPINGS = ("single", "member_series", "ensemble_snapshot", "full", "init_snapshot")
 _VALID_LEAD_UNITS = ("hours", "minutes", "seconds")
+_VALID_FILE_FORMATS = ("netcdf", "grib2")
+# NetCDF-only model-section options: meaningless for GRIB2, whose times and grid come from the message itself
+_NETCDF_ONLY_MODEL_FIELDS = ("init_attr", "lead_attr", "init_format", "valid_time_attr", "valid_time_format",
+                             "valid_time_var", "init_time_attr")
 
 _COMMON_REQUIRED = (
     "file_format", "var_name", "lat_name", "lon_name",
@@ -76,8 +81,13 @@ class InterpolationConfig:
     # (target_grid_sw_lat/lon + target_grid_dx_km/nx/ny, built via
     # regrid.build_corner_spacing_grid()).
     target_grid_file: str | None = None
-    target_lat_name: str = "latitude"
+    target_lat_name: str = "latitude"  # netcdf target grid only
     target_lon_name: str = "longitude"
+    # target_grid_file's format: "netcdf" (default) or "grib2" (e.g. a GRIB2 forecast file:
+    # the grid of the message chosen by target_grib_selector or the target_var_name preset).
+    target_grid_format: str = "netcdf"
+    target_var_name: str = "REFC"  # grib2 only
+    target_grib_selector: dict | list | None = None  # grib2 only
     target_grid_sw_lat: float | None = None
     target_grid_sw_lon: float | None = None
     target_grid_dx_km: float | None = None
@@ -123,10 +133,10 @@ class ObservationConfig:
 
 @dataclass
 class ModelConfig:
-    file_format: str
-    var_name: str
-    lat_name: str
-    lon_name: str
+    file_format: str  # "netcdf" | "grib2" (see _validate_file_format)
+    var_name: str  # NetCDF variable name, or for grib2 a py_obj.grib2_fields preset name (e.g. "REFC")
+    lat_name: str | None  # NetCDF only; None for grib2 (the grid comes from the message)
+    lon_name: str | None
     boundary_threshold: float
     max_value_threshold: float
     area_threshold_km2: float
@@ -173,6 +183,9 @@ class ModelConfig:
     # init_attr/init_format arithmetic mode, init_time is read directly from
     # init_attr, so this field is unused there.
     init_time_attr: str = "init_time"
+    # grib2 only: pygrib keys (dict, or a list of alternative dicts) identifying the record;
+    # overrides the var_name preset. Exactly one message must match per file.
+    grib_selector: dict | list | None = None
 
 
 @dataclass
@@ -213,6 +226,11 @@ class FetchMrmsConfig:
     lead_units: str = "hours"
     init_format: str | None = None
     filename_time_template: str | None = None  # opt-in: valid_time from the model file's NAME -- see ModelConfig
+    # Model-driven mode: the model files' format. For grib2, valid times come from the
+    # message selected by grib_selector or the var_name preset (see ModelConfig).
+    file_format: str = "netcdf"
+    var_name: str = "REFC"  # grib2 only
+    grib_selector: dict | list | None = None  # grib2 only
     tolerance_minutes: float = 5.0
     # Date-driven mode: 'dates' (explicit list of YYYYMMDD strings) or
     # 'date_range' (inclusive [start, end] YYYYMMDD pair, expanded to daily
@@ -263,6 +281,8 @@ class HistogramModelConfig:
     every member if ensemble). Self-contained (not reusing ModelConfig), for
     the same reason as HistogramObservationConfig above."""
     input_dir: str
+    file_format: str = "netcdf"  # "netcdf" | "grib2" -- see ModelConfig
+    grib_selector: dict | list | None = None  # grib2 only -- see ModelConfig
     var_name: str = "refl10cm_max"
     lat_name: str = "latitude"
     lon_name: str = "longitude"
@@ -375,13 +395,16 @@ def _build_source_config(
     extra_optional_defaults: dict | None = None,
 ):
     extra_optional_defaults = extra_optional_defaults or {}
-    _require_fields(section, section_name, _COMMON_REQUIRED + extra_required)
+    common_required = _COMMON_REQUIRED
+    if cls is ModelConfig and section.get("file_format") == "grib2":
+        common_required = tuple(k for k in _COMMON_REQUIRED if k not in ("lat_name", "lon_name"))  # grid is in the message
+    _require_fields(section, section_name, common_required + extra_required)
     _check_allowed(section, section_name, "mask", _VALID_MASKS)
     _check_allowed(section, section_name, "file_grouping", _VALID_FILE_GROUPINGS)
     if "lead_units" in section:
         _check_allowed(section, section_name, "lead_units", _VALID_LEAD_UNITS)
 
-    kwargs = {k: section[k] for k in _COMMON_REQUIRED}
+    kwargs = {k: section.get(k) for k in _COMMON_REQUIRED}
     for k in extra_required:
         kwargs[k] = section[k]
     for k, default in _COMMON_OPTIONAL_DEFAULTS.items():
@@ -392,6 +415,36 @@ def _build_source_config(
         kwargs["lead_units"] = section.get("lead_units", "hours")
 
     return cls(**kwargs)
+
+
+def _validate_file_format(section: dict, section_name: str, var_name_default: str | None = None) -> None:
+    """file_format must be "netcdf" (default) or "grib2". grib2 forecasts carry their
+    own grid and init/valid times, so the NetCDF-only options are rejected rather
+    than silently ignored, as are stacked_members and (for netcdf) grib_selector.
+    The GRIB2 record selection is checked here so a bad selector fails at load."""
+    # A field counts as set only if non-null: batch_config's materialized per-case configs
+    # write every field, unset ones as null.
+    fmt = section.get("file_format") or "netcdf"
+    if fmt not in _VALID_FILE_FORMATS:
+        raise ValueError(f"Config section '{section_name}': file_format must be one of {_VALID_FILE_FORMATS}, got {fmt!r}")
+    if fmt == "netcdf":
+        if section.get("grib_selector") is not None:
+            raise ValueError(f"Config section '{section_name}': grib_selector only applies with file_format: grib2")
+        return
+    bad = [k for k in _NETCDF_ONLY_MODEL_FIELDS if section.get(k) is not None and k != "init_time_attr"]
+    if section.get("init_time_attr") not in (None, "init_time"):  # "init_time" is the materialized default
+        bad.append("init_time_attr")
+    if section.get("stacked_members"):
+        bad.append("stacked_members")
+    if bad:
+        raise ValueError(
+            f"Config section '{section_name}': {bad} are NetCDF-only and do not apply with file_format: grib2 "
+            "(GRIB2 times and grid come from each message; use filename_time_template to override times)"
+        )
+    try:
+        resolve_grib_selector(section.get("var_name", var_name_default), section.get("grib_selector"))
+    except ValueError as e:
+        raise ValueError(f"Config section '{section_name}': {e}") from None
 
 
 def _validate_time_mode(section: dict, section_name: str) -> None:
@@ -410,7 +463,8 @@ def _validate_time_mode(section: dict, section_name: str) -> None:
     has_arith_mode = all(k in section for k in ("init_attr", "lead_attr", "init_format"))
     has_cf_var_mode = "valid_time_var" in section
     has_filename_mode = "filename_time_template" in section
-    if not (has_string_mode or has_arith_mode or has_cf_var_mode or has_filename_mode):
+    has_grib2_times = section.get("file_format") == "grib2"  # init/valid come from each GRIB2 message
+    if not (has_string_mode or has_arith_mode or has_cf_var_mode or has_filename_mode or has_grib2_times):
         raise ValueError(
             f"Config section '{section_name}' needs one of: 'valid_time_attr'+'valid_time_format', "
             f"'init_attr'+'lead_attr'+'init_format', 'valid_time_var', or 'filename_time_template'."
@@ -454,6 +508,28 @@ def _validate_target_grid_mode(section: dict, section_name: str) -> None:
         )
 
 
+def _validate_target_grid_format(section: dict, section_name: str) -> None:
+    """target_grid_format applies to target_grid_file mode: "netcdf" (default) reads
+    target_lat_name/target_lon_name; "grib2" reads the grid of one GRIB2 message.
+    Null values count as unset (see _validate_file_format)."""
+    fmt = section.get("target_grid_format") or "netcdf"
+    if fmt not in _VALID_FILE_FORMATS:
+        raise ValueError(f"Config section '{section_name}': target_grid_format must be one of {_VALID_FILE_FORMATS}, got {fmt!r}")
+    if fmt == "netcdf":
+        if section.get("target_grib_selector") is not None:
+            raise ValueError(f"Config section '{section_name}': target_grib_selector only applies with target_grid_format: grib2")
+        return
+    if section.get("target_grid_file") is None:
+        raise ValueError(f"Config section '{section_name}': target_grid_format: grib2 needs target_grid_file (a GRIB2 file)")
+    for k, default in (("target_lat_name", "latitude"), ("target_lon_name", "longitude")):
+        if section.get(k) not in (None, default):
+            raise ValueError(f"Config section '{section_name}': {k} is NetCDF-only; a GRIB2 grid comes from the message")
+    try:
+        resolve_grib_selector(section.get("target_var_name") or "REFC", section.get("target_grib_selector"))
+    except ValueError as e:
+        raise ValueError(f"Config section '{section_name}': {e}") from None
+
+
 def _validate_fetch_mode(section: dict, section_name: str) -> None:
     """Exactly one of fetch_mrms's two top-level modes must be given:
     model-driven (model_input_dir + a time-derivation mode) or date-driven
@@ -479,6 +555,7 @@ def _validate_fetch_mode(section: dict, section_name: str) -> None:
             f"Config section '{section_name}': 'dates' and 'date_range' are mutually exclusive -- give exactly one."
         )
     if has_model_mode:
+        _validate_file_format(section, section_name, var_name_default="REFC")
         _validate_time_mode(section, section_name)
 
 
@@ -521,6 +598,7 @@ def load_config(path: str) -> Config:
     if interp_section is not None:
         _require_fields(interp_section, "interpolation", ("raw_mrms_dir", "interp_mrms_dir"))
         _validate_target_grid_mode(interp_section, "interpolation")
+        _validate_target_grid_format(interp_section, "interpolation")
         date_range = interp_section.get("date_range")
         interpolation = InterpolationConfig(
             raw_mrms_dir=interp_section["raw_mrms_dir"],
@@ -528,6 +606,9 @@ def load_config(path: str) -> Config:
             target_grid_file=interp_section.get("target_grid_file"),
             target_lat_name=interp_section.get("target_lat_name", "latitude"),
             target_lon_name=interp_section.get("target_lon_name", "longitude"),
+            target_grid_format=interp_section.get("target_grid_format") or "netcdf",
+            target_var_name=interp_section.get("target_var_name") or "REFC",
+            target_grib_selector=interp_section.get("target_grib_selector"),
             target_grid_sw_lat=interp_section.get("target_grid_sw_lat"),
             target_grid_sw_lon=interp_section.get("target_grid_sw_lon"),
             target_grid_dx_km=interp_section.get("target_grid_dx_km"),
@@ -559,6 +640,7 @@ def load_config(path: str) -> Config:
     model = None
     model_section = _section("model")
     if model_section is not None:
+        _validate_file_format(model_section, "model")
         _validate_time_mode(model_section, "model")
         model = _build_source_config(
             ModelConfig, model_section, "model",
@@ -578,6 +660,7 @@ def load_config(path: str) -> Config:
                 "filename_time_template": None,
                 "init_time_offset_minutes": None,
                 "init_time_attr": "init_time",
+                "grib_selector": None,
             },
         )
         _resolve_paths(model, _MODEL_PATH_FIELDS, base_dir)
@@ -643,6 +726,9 @@ def load_config(path: str) -> Config:
             lead_units=fetch_mrms_section.get("lead_units", "hours"),
             init_format=fetch_mrms_section.get("init_format"),
             filename_time_template=fetch_mrms_section.get("filename_time_template"),
+            file_format=fetch_mrms_section.get("file_format") or "netcdf",
+            var_name=fetch_mrms_section.get("var_name") or "REFC",
+            grib_selector=fetch_mrms_section.get("grib_selector"),
             tolerance_minutes=fetch_mrms_section.get("tolerance_minutes", 5.0),
             dates=list(fetch_mrms_section["dates"]) if "dates" in fetch_mrms_section else None,
             date_range=tuple(date_range) if date_range is not None else None,
@@ -679,10 +765,13 @@ def load_config(path: str) -> Config:
     hist_model_section = _section("histogram_model")
     if hist_model_section is not None:
         _require_fields(hist_model_section, "histogram_model", ("input_dir",))
+        _validate_file_format(hist_model_section, "histogram_model", var_name_default="refl10cm_max")
         _validate_time_mode(hist_model_section, "histogram_model")
         _check_allowed(hist_model_section, "histogram_model", "mask", _VALID_MASKS)
         histogram_model = HistogramModelConfig(
             input_dir=hist_model_section["input_dir"],
+            file_format=hist_model_section.get("file_format", "netcdf"),
+            grib_selector=hist_model_section.get("grib_selector"),
             var_name=hist_model_section.get("var_name", "refl10cm_max"),
             lat_name=hist_model_section.get("lat_name", "latitude"),
             lon_name=hist_model_section.get("lon_name", "longitude"),

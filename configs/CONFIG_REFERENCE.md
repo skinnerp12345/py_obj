@@ -28,9 +28,12 @@ grid.
 |---|---|---|---|
 | `raw_mrms_dir` | str | *required* | Directory of raw native-grid MRMS GRIB2 files, `YYYYMMDD/` subdirectories. |
 | `interp_mrms_dir` | str | *required* | Output directory for interpolated NetCDF files. |
-| `target_grid_file` | str \| null | `null` | A ready-made model-grid NetCDF file to interpolate onto. Mutually exclusive with the corner+spacing+dims fields below — give exactly one target-grid mode. |
-| `target_lat_name` | str | `"latitude"` | Latitude variable name inside `target_grid_file`. |
-| `target_lon_name` | str | `"longitude"` | Longitude variable name inside `target_grid_file`. |
+| `target_grid_file` | str \| null | `null` | A ready-made model-grid file (NetCDF, or GRIB2 with `target_grid_format: grib2`) to interpolate onto. Mutually exclusive with the corner+spacing+dims fields below — give exactly one target-grid mode. |
+| `target_grid_format` | str | `"netcdf"` | `netcdf` \| `grib2`: format of `target_grid_file` (never inferred from the file name). For `grib2`, the grid of the message chosen by `target_grib_selector` or the `target_var_name` preset. |
+| `target_var_name` | str | `"REFC"` | GRIB2 target grid only: preset naming the message whose grid is used. |
+| `target_grib_selector` | dict \| list \| null | `null` | GRIB2 target grid only: pygrib keys, overriding `target_var_name`. |
+| `target_lat_name` | str | `"latitude"` | Latitude variable name inside a NetCDF `target_grid_file`. |
+| `target_lon_name` | str | `"longitude"` | Longitude variable name inside a NetCDF `target_grid_file`. |
 | `target_grid_sw_lat` | float \| null | `null` | Southwest-corner latitude for a computed grid (corner+spacing+dims mode). |
 | `target_grid_sw_lon` | float \| null | `null` | Southwest-corner longitude for a computed grid. |
 | `target_grid_dx_km` | float \| null | `null` | East-west grid spacing (km) for a computed grid. |
@@ -60,7 +63,7 @@ interpolated MRMS data. Paired with `linear_classification:` (see below) --
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `file_format` | str | *required* | `netcdf` \| `grib2` — selects the loader. |
+| `file_format` | str | *required* | `netcdf` (interpolated-MRMS output is always NetCDF). |
 | `var_name` | str | *required* | Reflectivity variable name to read. |
 | `lat_name` | str | *required* | Latitude variable name. |
 | `lon_name` | str | *required* | Longitude variable name. |
@@ -86,10 +89,11 @@ required together.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `file_format` | str | *required* | `netcdf` \| `grib2` — selects the loader. |
-| `var_name` | str | *required* | Reflectivity variable name to read. |
-| `lat_name` | str | *required* | Latitude variable name. |
-| `lon_name` | str | *required* | Longitude variable name. |
+| `file_format` | str | *required* | `netcdf` \| `grib2` — the forecast files' format. See [GRIB2 forecast input](#grib2-forecast-input-file_format-grib2) below. |
+| `var_name` | str | *required* | NetCDF: the reflectivity variable name. GRIB2: a field preset name (`REFC` = composite reflectivity), used unless `grib_selector` is given. |
+| `grib_selector` | dict \| list \| null | `null` | GRIB2 only: pygrib keys identifying the record (e.g. `{discipline: 0, parameterCategory: 16, parameterNumber: 196}`), or a list of alternatives; overrides the `var_name` preset. Exactly one message must match per file. |
+| `lat_name` | str | *required (NetCDF)* | Latitude variable name. Not used for GRIB2 (the grid is in the message). |
+| `lon_name` | str | *required (NetCDF)* | Longitude variable name. Not used for GRIB2. |
 | `boundary_threshold` | float | *required* | Initial object-boundary identification threshold (dBZ). |
 | `max_value_threshold` | float | *required* | Stricter threshold an object's peak value must exceed to be retained (dBZ). |
 | `area_threshold_km2` | float | *required* | Minimum true physical area (km²) for an object to be retained. |
@@ -118,6 +122,7 @@ At least one time-derivation mode is required: `valid_time_attr`+`valid_time_for
 **or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
 `filename_time_template`. Precedence when several are given: `filename_time_template`
 > `valid_time_var` > `valid_time_attr` > `init_attr`+`lead_attr`.
+GRIB2 forecasts need none of these (times come from each message).
 
 
 ### Filename-derived times (`filename_time_template`)
@@ -154,6 +159,31 @@ time. Example for WoFSCast, initialized 20 min after its parent WoFS run:
 `wofs_wofscast_WEB_62_20260506_2220_0310.nc` with offset `20` gives init
 2026-05-06 22:00 and valid 2026-05-07 03:10. `init_snapshot` object files
 and histogram `lead_hours` then use the adjusted init time.
+
+
+### GRIB2 forecast input (`file_format: grib2`)
+
+Available on `model:`, `histogram_model:`, `fetch_mrms:` (model-driven mode) and,
+as `target_grid_format`, `interpolation:`. Defaults stay NetCDF.
+
+- **Record:** a GRIB2 file holds many records. The one read is chosen by
+  `grib_selector` (pygrib keys) or, if absent, the `var_name` preset. `REFC`
+  covers both verified composite-reflectivity encodings: `0/16/196` (NCEP local
+  table, e.g. HRRR) and `0/16/5` (WMO standard, e.g. RRFS). Exactly one message must
+  match in every file; zero or several raise an error listing what was found.
+- **Grid:** lat/lon come from the selected message, so `lat_name`/`lon_name` are not
+  used.
+- **Times:** init = `analDate`, valid = `validDate` of the selected message.
+  `filename_time_template` still overrides them. The NetCDF time options
+  (`init_attr`, `lead_attr`, `init_format`, `valid_time_attr`, `valid_time_format`,
+  `valid_time_var`, `init_time_attr`) are rejected with GRIB2 rather than ignored.
+- **Members:** flat (deterministic) and `member_subdirs` work as for NetCDF.
+  `stacked_members` is NetCDF-only.
+- **Downstream unchanged:** everything after reading (identification, tracking,
+  matching, output files) is identical for both formats.
+
+Examples: `config_sample_grib2.yaml` (bundled sample), `config_example_hrrr_grib2_batch.yaml`
+and `config_example_hrrr_grib2_histogram_batch.yaml` (HRRR batch templates).
 
 ---
 
@@ -212,6 +242,9 @@ MRMS match to each file in a directory of model output) or **date-driven**
 | `lead_units` | str | `"hours"` | `hours` \| `minutes` \| `seconds` — unit of `lead_attr`'s raw number (arithmetic mode). |
 | `init_format` | str \| null | `null` | `strptime` format for `init_attr`'s value (arithmetic mode). |
 | `filename_time_template` | str \| null | `null` | Model-driven mode, filename time-derivation: valid time from each model file's name (see `model:`'s field of the same name). |
+| `file_format` | str | `"netcdf"` | Model-driven mode: the model files' format, `netcdf` \| `grib2` (valid times then come from each message; see `model:`). |
+| `var_name` | str | `"REFC"` | GRIB2 only: preset naming the message whose valid time is read. |
+| `grib_selector` | dict \| list \| null | `null` | GRIB2 only: overrides `var_name` (see `model:`). |
 | `tolerance_minutes` | float | `5.0` | Maximum allowed gap between a model file's valid_time and the nearest available MRMS timestamp. |
 | `dates` | list[str] \| null | `null` | Date-driven mode: explicit list of `YYYYMMDD` strings. Mutually exclusive with `date_range` and `model_input_dir`. |
 | `date_range` | [str, str] \| null | `null` | Date-driven mode: inclusive `[YYYYMMDD, YYYYMMDD]` range, expanded to daily strings. |
@@ -223,7 +256,8 @@ MRMS match to each file in a directory of model output) or **date-driven**
 
 Model-driven mode additionally requires exactly one time-derivation mode
 (same rule as `model:` above): `valid_time_attr`+`valid_time_format`, or
-`init_attr`+`lead_attr`+`init_format`, or `filename_time_template`.
+`init_attr`+`lead_attr`+`init_format`, or `filename_time_template`, or
+`file_format: grib2` (whose files carry their own times).
 
 ---
 
@@ -259,9 +293,11 @@ rationale as `histogram_observations:` above.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `input_dir` | str | *required* | Directory of model output files. |
-| `var_name` | str | `"refl10cm_max"` | Reflectivity variable name. |
-| `lat_name` | str | `"latitude"` | Latitude variable name. |
-| `lon_name` | str | `"longitude"` | Longitude variable name. |
+| `file_format` | str | `"netcdf"` | `netcdf` \| `grib2` (see `model:`). |
+| `var_name` | str | `"refl10cm_max"` | NetCDF variable name, or GRIB2 preset name (e.g. `REFC`). |
+| `grib_selector` | dict \| list \| null | `null` | GRIB2 only (see `model:`). |
+| `lat_name` | str | `"latitude"` | Latitude variable name (NetCDF only). |
+| `lon_name` | str | `"longitude"` | Longitude variable name (NetCDF only). |
 | `member_subdirs` | bool | `false` | `true` = one ensemble member per immediate subdirectory of `input_dir`. |
 | `member_subdir_pattern` | str | `"*"` | Restricts which subdirectories count as members (see `model:`'s field of the same name). |
 | `stacked_members` | bool | `false` | `true` = all members stacked inside each file as a real array dimension. |
@@ -288,6 +324,7 @@ At least one time-derivation mode is required: `valid_time_attr`+`valid_time_for
 **or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
 `filename_time_template`. Precedence when several are given: `filename_time_template`
 > `valid_time_var` > `valid_time_attr` > `init_attr`+`lead_attr`.
+GRIB2 forecasts need none of these; their `lead_hours` = `validDate` − `analDate`.
 
 ---
 

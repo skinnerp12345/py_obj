@@ -113,6 +113,12 @@ the command line. See `drivers/README.md` for the full section/field
 reference and `configs/CONFIG_REFERENCE.md` for a field-by-field reference of
 every config option.
 
+Forecast files may be NetCDF (default) or GRIB2 (`file_format: grib2`, e.g. HRRR/RRFS
+composite reflectivity via `var_name: REFC`); see "GRIB2 forecast input" in
+`configs/CONFIG_REFERENCE.md`, `configs/config_sample_grib2.yaml` (runs on the
+bundled `sample_data/grib2_case/`) and the HRRR batch templates
+`configs/config_example_hrrr_grib2_batch.yaml` / `..._histogram_batch.yaml`.
+
 ## License
 
 MIT — see `LICENSE`.

@@ -41,6 +41,7 @@ def build_manifest(model: ModelConfig):
         init_time_attr=model.init_time_attr,
         filename_time_template=model.filename_time_template,
         init_time_offset_minutes=model.init_time_offset_minutes,
+        file_format=model.file_format, grib_selector=model.grib_selector,
     )
 
 

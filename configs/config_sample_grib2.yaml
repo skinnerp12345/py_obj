@@ -1,0 +1,40 @@
+# SAMPLE CONFIG: GRIB2 forecast input on the bundled sample
+# (../sample_data/grib2_case/hrrr/: 3 real HRRR REFC messages, 2026-05-18 00Z,
+# f000-f002). Each file also holds a decoy reflectivity record, so this checks
+# that the REFC record is the one actually selected.
+#
+#   python py_obj/drivers/identify_track_model.py   py_obj/configs/config_sample_grib2.yaml
+#   python py_obj/drivers/build_histogram_model.py  py_obj/configs/config_sample_grib2.yaml
+#
+# For RRFS (REFC encoded 0/16/5 instead of 0/16/196), point input_dir at
+# ../sample_data/grib2_case/rrfs and file_pattern at "rrfs_*.grib2" -- the same
+# var_name: REFC preset covers both.
+
+model:
+  file_format: grib2
+  var_name: REFC
+  input_dir: ../sample_data/grib2_case/hrrr
+  file_pattern: "hrrr_ncep_*.grib2"
+  member_subdirs: false
+  boundary_threshold: 45.0
+  max_value_threshold: 50.0
+  area_threshold_km2: 108.0
+  mask: conus_east
+  track: false
+  track_distance_km: 0.0
+  file_grouping: init_snapshot    # 1 file: obj_init_20260518_000000.nc with all 3 leads
+  object_output_dir: output/obj_hrrr_grib2_sample
+
+histogram_model:
+  file_format: grib2
+  var_name: REFC
+  input_dir: ../sample_data/grib2_case/hrrr
+  file_pattern: "hrrr_ncep_*.grib2"
+  mask: conus_east
+  output_dir: output/hist_hrrr_grib2_sample
+
+linear_classification:
+  linear_eccentricity_threshold: 0.8
+  linear_length_threshold_km: 200.0
+  mixed_eccentricity_threshold: 0.75
+  mixed_length_threshold_km: 100.0

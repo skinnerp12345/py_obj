@@ -20,7 +20,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import load_config, require_section
-from py_obj.regrid import BatchSummary, build_corner_spacing_grid, run_batch_interpolation
+from py_obj.regrid import BatchSummary, GridSpec, build_corner_spacing_grid, load_grib2_grid, run_batch_interpolation
 
 
 def run_one_case(config_path: str) -> BatchSummary:
@@ -33,6 +33,22 @@ def run_one_case(config_path: str) -> BatchSummary:
         print(f"Date range: {interp.date_range[0]} - {interp.date_range[1]}")
     if interp.max_files:
         print(f"max_files: {interp.max_files} (smoke-test/dry-run cap)")
+
+    if interp.target_grid_file is not None and interp.target_grid_format == "grib2":
+        print(f"Target grid: GRIB2 '{interp.target_grid_file}' "
+              f"({interp.target_grib_selector or interp.target_var_name} message's own grid)")
+        lat2d, lon2d = load_grib2_grid(interp.target_grid_file, var_name=interp.target_var_name,
+                                       grib_selector=interp.target_grib_selector)
+        return run_batch_interpolation(
+            input_dir=interp.raw_mrms_dir,
+            output_dir=interp.interp_mrms_dir,
+            target_grid=GridSpec(lat2d=lat2d, lon2d=lon2d),
+            weight_cache_dir=interp.weight_cache_dir,
+            n_workers=interp.n_workers,
+            date_range=interp.date_range,
+            max_files=interp.max_files,
+            file_pattern=interp.file_pattern,
+        )
 
     if interp.target_grid_file is not None:
         print(f"Target grid: '{interp.target_grid_file}' (lat='{interp.target_lat_name}', lon='{interp.target_lon_name}')")

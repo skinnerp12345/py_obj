@@ -27,6 +27,14 @@ zero external data -- just clone and go.
   nearest each WoFS valid time, already fetched from the public
   `noaa-mrms-pds` AWS archive in an earlier session (see
   `py_obj/drivers/fetch_mrms.py`).
+- **`grib2_case/`** -- real GRIB2 forecast messages for GRIB2 forecast input
+  (`file_format: grib2`): HRRR (`hrrr/hrrr_ncep_2026051800f00[0-2].grib2`) and
+  RRFS (`rrfs/rrfs_2026051800f00[0-2].grib2`), init 2026-05-18 00Z, f000-f002, on
+  the same 1799x1059 Lambert grid. Each file holds two real messages copied
+  byte-for-byte from the ~115 MB source files: a DECOY reflectivity record
+  first (HRRR 0/16/195, RRFS 0/16/4, both 1 km AGL), then composite reflectivity
+  (REFC) in each model's own encoding (HRRR 0/16/196, NCEP local table; RRFS
+  0/16/5, WMO standard). ~6.4 MB total. Built by `build_grib2_sample.py`.
 
 Both source models' full files are 234-281 MB each -- almost entirely unused
 WRF diagnostic variables this library never reads. Trimming down to just the
@@ -44,6 +52,9 @@ automatically by anything else -- it's a provenance record, kept in case the
 sample ever needs to be regenerated or extended (e.g. a different crop window,
 more lead times). Requires those larger source directories to exist locally;
 not runnable from a fresh clone that only has this trimmed output.
+
+`build_grib2_sample.py` does the same for `grib2_case/`, from this developer's
+local `grib2_testing/{hrrr,rrfs}/` source files.
 
 ## What's NOT bundled here
 
