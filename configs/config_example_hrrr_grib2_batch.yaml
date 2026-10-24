@@ -41,6 +41,8 @@ model:
   track: false                    # set true to track objects through each forecast
   track_distance_km: 0.0
   file_grouping: init_snapshot    # ONE output file per initialization, every forecast hour inside
+  skip_existing: true             # default: rerunning resumes a stopped batch (existing files are kept);
+                                  # false = recompute and overwrite everything
   object_output_dir: /raid/hrefv2_objects/hrrr   # files are named obj_init_<init time>.nc, unique per run
 
 linear_classification:

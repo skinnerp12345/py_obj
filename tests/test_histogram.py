@@ -10,6 +10,7 @@ from datetime import datetime
 
 import netCDF4
 import numpy as np
+import yaml
 import pytest
 
 from py_obj.config import load_config
@@ -255,7 +256,21 @@ def test_histogram_to_pdf_does_not_exclude_any_bin():
 def test_real_build_histogram_drivers_and_matched_percentile(tmp_path):
     from py_obj.drivers import aggregate_histograms, build_histogram_mrms, build_histogram_model
 
-    config_path = os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")
+    # A temp copy of the sample config: outputs go to tmp_path and skip_existing is off,
+    # so the test never depends on (or is skipped by) output left in the repo by
+    # earlier runs of the shipped sample config.
+    with open(os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")) as fh:
+        sample = yaml.safe_load(fh)
+    for name in ("histogram_observations", "histogram_model"):
+        sec = sample[name]
+        for key in ("interp_mrms_dir", "input_dir"):
+            if key in sec:
+                sec[key] = os.path.normpath(os.path.join(CONFIGS_DIR, sec[key]))
+        sec["output_dir"] = str(tmp_path / name)
+        sec["skip_existing"] = False
+    config_path = str(tmp_path / "config_sample_histogram.yaml")
+    with open(config_path, "w") as fh:
+        yaml.safe_dump(sample, fh)
 
     mrms_out_paths = build_histogram_mrms.run_one_case(config_path)
     model_out_path = build_histogram_model.run_one_case(config_path)
@@ -323,17 +338,24 @@ def test_real_mask_excludes_cells_entirely_not_as_fake_clear_air(tmp_path):
     unmasked_cfg_path = os.path.join(CONFIGS_DIR, "config_sample_histogram.yaml")
     cfg = load_config(unmasked_cfg_path)  # resolves interp_mrms_dir to an absolute path
 
-    masked_cfg_path = str(tmp_path / "config_masked.yaml")
-    with open(masked_cfg_path, "w") as f:
-        f.write(
-            "histogram_observations:\n"
-            f"  interp_mrms_dir: {cfg.histogram_observations.interp_mrms_dir}\n"
-            f"  var_name: {cfg.histogram_observations.var_name}\n"
-            f"  lat_name: {cfg.histogram_observations.lat_name}\n"
-            f"  lon_name: {cfg.histogram_observations.lon_name}\n"
-            f"  output_dir: {tmp_path / 'hist_mrms_masked'}\n"
-            "  mask: conus_east\n"
-        )
+    def write_cfg(name, mask):
+        path = str(tmp_path / f"config_{name}.yaml")
+        with open(path, "w") as f:
+            f.write(
+                "histogram_observations:\n"
+                f"  interp_mrms_dir: {cfg.histogram_observations.interp_mrms_dir}\n"
+                f"  var_name: {cfg.histogram_observations.var_name}\n"
+                f"  lat_name: {cfg.histogram_observations.lat_name}\n"
+                f"  lon_name: {cfg.histogram_observations.lon_name}\n"
+                f"  output_dir: {tmp_path / ('hist_mrms_' + name)}\n"
+                f"  mask: {mask}\n"
+                "  skip_existing: false\n"
+            )
+        return path
+
+    # both runs write to tmp_path, so neither depends on output left in the repo
+    unmasked_cfg_path = write_cfg("unmasked", "none")
+    masked_cfg_path = write_cfg("masked", "conus_east")
 
     unmasked_paths = build_histogram_mrms.run_one_case(unmasked_cfg_path)
     masked_paths = build_histogram_mrms.run_one_case(masked_cfg_path)

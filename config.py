@@ -110,6 +110,9 @@ class InterpolationConfig:
                                         # a date directory holds more than one (e.g.
                                         # "**/*MergedReflectivityQCComposite*" to skip
                                         # MESH/RotationTrack files sitting alongside it
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -129,6 +132,9 @@ class ObservationConfig:
     object_output_dir: str = "output/obj_mrms"
     file_pattern: str = "**/*.nc"  # restricts discovery when interp_mrms_dir contains non-data
                                     # files alongside real ones (e.g. "**/wofs_MRMS_RAD_*.nc")
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -186,6 +192,9 @@ class ModelConfig:
     # grib2 only: pygrib keys (dict, or a list of alternative dicts) identifying the record;
     # overrides the var_name preset. Exactly one message must match per file.
     grib_selector: dict | list | None = None
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -198,6 +207,9 @@ class MatchingConfig:
     max_time_offset_minutes: float = 5.0
     output_dir: str = "output/matches"
     file_pattern: str = "*.nc"
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -272,6 +284,9 @@ class HistogramObservationConfig:
                                     # files that sort before the real ones, and _discover_by_day()
                                     # has no per-file error isolation, so even one such file
                                     # aborts an entire day's histogram
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -322,6 +337,9 @@ class HistogramModelConfig:
     bin_width: float = 0.2
     edge_trim: int = 7
     clip_negative_to_zero: bool = False
+    # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
+    # lets an interrupted run or batch resume. false = always recompute and overwrite.
+    skip_existing: bool = True
 
 
 @dataclass
@@ -381,6 +399,16 @@ def _require_fields(section: dict, section_name: str, required: tuple[str, ...])
         )
 
 
+def _skip_existing(section: dict, section_name: str) -> bool:
+    """skip_existing: default true; must be a real bool (a quoted "false" would be truthy)."""
+    value = section.get("skip_existing")
+    if value is None:
+        return True
+    if not isinstance(value, bool):
+        raise ValueError(f"Config section '{section_name}': skip_existing must be true or false, got {value!r}")
+    return value
+
+
 def _check_allowed(section: dict, section_name: str, field: str, allowed: tuple[str, ...]) -> None:
     value = section.get(field)
     if value is not None and value not in allowed:
@@ -413,6 +441,7 @@ def _build_source_config(
         kwargs[k] = section.get(k, default)
     if cls is ModelConfig:
         kwargs["lead_units"] = section.get("lead_units", "hours")
+    kwargs["skip_existing"] = _skip_existing(section, section_name)
 
     return cls(**kwargs)
 
@@ -624,6 +653,7 @@ def load_config(path: str) -> Config:
             date_range=tuple(date_range) if date_range is not None else None,
             max_files=interp_section.get("max_files"),
             file_pattern=interp_section.get("file_pattern", "**/*.grib2*"),
+            skip_existing=_skip_existing(interp_section, "interpolation"),
         )
         _resolve_paths(interpolation, _INTERPOLATION_PATH_FIELDS, base_dir)
 
@@ -682,6 +712,7 @@ def load_config(path: str) -> Config:
             max_time_offset_minutes=matching_section.get("max_time_offset_minutes", 5.0),
             output_dir=matching_section.get("output_dir", "output/matches"),
             file_pattern=matching_section.get("file_pattern", "*.nc"),
+            skip_existing=_skip_existing(matching_section, "matching"),
         )
         _resolve_paths(matching, _MATCHING_PATH_FIELDS, base_dir)
 
@@ -757,6 +788,7 @@ def load_config(path: str) -> Config:
             bin_width=hist_obs_section.get("bin_width", 0.2),
             edge_trim=hist_obs_section.get("edge_trim", 7),
             clip_negative_to_zero=hist_obs_section.get("clip_negative_to_zero", False),
+            skip_existing=_skip_existing(hist_obs_section, "histogram_observations"),
             file_pattern=hist_obs_section.get("file_pattern", "**/*.nc"),
         )
         _resolve_paths(histogram_observations, _HISTOGRAM_OBSERVATIONS_PATH_FIELDS, base_dir)
@@ -796,6 +828,7 @@ def load_config(path: str) -> Config:
             bin_width=hist_model_section.get("bin_width", 0.2),
             edge_trim=hist_model_section.get("edge_trim", 7),
             clip_negative_to_zero=hist_model_section.get("clip_negative_to_zero", False),
+            skip_existing=_skip_existing(hist_model_section, "histogram_model"),
         )
         _resolve_paths(histogram_model, _HISTOGRAM_MODEL_PATH_FIELDS, base_dir)
 

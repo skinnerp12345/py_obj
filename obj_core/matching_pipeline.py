@@ -15,6 +15,7 @@ from typing import Literal
 
 import numpy as np
 
+from ..output_check import readable_output
 from ..time_utils import nearest_within_tolerance
 from .identify import precompute_grid_geometry
 from .match_io import MatchResult, write_match_file
@@ -45,6 +46,7 @@ def run_matching_series(
     output_dir: str,
     max_time_offset_minutes: float = 5.0,
     file_grouping: FileGrouping = "per_time",
+    skip_existing: bool = False,
 ) -> MatchingSummary:
     """Match every forecast (member, time) slice against the nearest truth
     slice within `max_time_offset_minutes`.
@@ -80,6 +82,11 @@ def run_matching_series(
 
     A forecast valid_time with no truth valid_time within tolerance is skipped
     (not silently dropped) and reported in the returned MatchingSummary.
+
+    skip_existing (default False here; drivers pass the config value): skip work
+    whose output already opens as NetCDF (py_obj.output_check) -- per_time: each
+    forecast valid_time whose match_<valid>.nc exists; init_snapshot: the whole
+    call if match_init_<init>.nc exists. output_paths lists only files written.
     """
     if not truth_files:
         raise ValueError("run_matching_series: truth_files must be non-empty")
@@ -87,6 +94,15 @@ def run_matching_series(
         raise ValueError("run_matching_series: forecast_files must be non-empty")
 
     os.makedirs(output_dir, exist_ok=True)
+
+    if skip_existing and file_grouping == "init_snapshot":
+        init_times = {read_init_time_only(f) for f in forecast_files}
+        if len(init_times) == 1 and None not in init_times:
+            existing = os.path.join(output_dir, f"match_init_{next(iter(init_times)):%Y%m%d_%H%M%S}.nc")
+            if readable_output(existing):
+                print(f"skip_existing: '{existing}' already exists -- nothing to do")
+                return MatchingSummary(output_paths=[], skipped_forecast_times=[])
+    existing_by_time: dict[datetime, bool] = {}  # per_time skip_existing cache
 
     # collect every truth (time, labels, objects) slice, keyed by valid_time --
     # also record which specific file each valid_time actually came from, so
@@ -133,6 +149,11 @@ def run_matching_series(
             raise ValueError(f"'{f}': grid shape {forecast_grid_shape} does not match truth files' {grid_lat2d.shape}")
 
         for member_id, vt, forecast_labels, forecast_objects in iter_object_slices_lazy(f):
+            if skip_existing and file_grouping == "per_time":
+                if vt not in existing_by_time:
+                    existing_by_time[vt] = readable_output(os.path.join(output_dir, f"match_{vt:%Y%m%d_%H%M%S}.nc"))
+                if existing_by_time[vt]:
+                    continue
             nearest_truth_time = nearest_within_tolerance(vt, truth_times, max_time_offset_minutes)
             if nearest_truth_time is None:
                 if vt not in skipped_forecast_times_seen:
@@ -187,4 +208,7 @@ def run_matching_series(
     else:
         raise ValueError(f"run_matching_series: unknown file_grouping '{file_grouping}'")
 
+    n_existing = sum(existing_by_time.values())
+    if n_existing:
+        print(f"skip_existing: {n_existing} forecast time(s) already had a match file -- not recomputed")
     return MatchingSummary(output_paths=output_paths, skipped_forecast_times=skipped_forecast_times)

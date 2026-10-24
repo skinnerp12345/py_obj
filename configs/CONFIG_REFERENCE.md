@@ -49,6 +49,7 @@ grid.
 | `date_range` | [str, str] \| null | `null` | Inclusive `[YYYYMMDD, YYYYMMDD]` range restricting discovered files; `null` = everything found. |
 | `max_files` | int \| null | `null` | Caps the file count after discovery/date filtering; `null` = no cap. |
 | `file_pattern` | str | `"**/*.grib2*"` | Glob restricting discovery to one MRMS product when a date directory holds more than one (e.g. `"**/*MergedReflectivityQCComposite*"`). |
+| `skip_existing` | bool | `true` | Don't regrid an MRMS file whose output `interp_mrms_<valid>.nc` already exists and opens; `false` = always recompute and overwrite. See [Resuming interrupted runs](#resuming-interrupted-runs-skip_existing). |
 
 Exactly one target-grid mode is required: `target_grid_file`, **or** all five
 of `target_grid_sw_lat`/`target_grid_sw_lon`/`target_grid_dx_km`/`target_grid_nx`/`target_grid_ny`.
@@ -77,6 +78,7 @@ interpolated MRMS data. Paired with `linear_classification:` (see below) --
 | `file_grouping` | str | `"single"` | `single` \| `member_series` \| `ensemble_snapshot` \| `full` \| `init_snapshot` — output file shape. |
 | `object_output_dir` | str | `"output/obj_mrms"` | Output directory for object files. |
 | `file_pattern` | str | `"**/*.nc"` | Glob restricting discovery when `interp_mrms_dir` contains non-data files alongside real ones. |
+| `skip_existing` | bool | `true` | Skip object files that already exist and open. Tracking off: only missing files are computed. Tracking on: the run is skipped only if every file exists, otherwise all of it is recomputed. `false` = always overwrite. |
 
 ---
 
@@ -117,6 +119,7 @@ required together.
 | `file_pattern` | str | `"*.nc"` | Glob restricting file discovery. |
 | `object_output_dir` | str | `"output/obj_model"` | Output directory for object files. |
 | `init_time_attr` | str | `"init_time"` | Only used for `file_grouping="init_snapshot"` in string time-mode: the file's own init-time string attribute (read with `valid_time_format`). Unused in arithmetic mode (init_time comes from `init_attr` directly there). |
+| `skip_existing` | bool | `true` | As for `observations:` (e.g. an existing `obj_init_<init>.nc` skips that case). |
 
 At least one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
 **or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
@@ -201,6 +204,7 @@ Matches truth vs. forecast object files via a Total Interest (TI) score.
 | `max_time_offset_minutes` | float | `5.0` | Maximum allowed truth/forecast valid_time mismatch when pairing files. |
 | `output_dir` | str | `"output/matches"` | Output directory for match files. |
 | `file_pattern` | str | `"*.nc"` | Glob restricting object-file discovery in both directories. |
+| `skip_existing` | bool | `true` | Skip forecast times (per_time) or cases (`run_matching_per_case.py`) whose match file already exists and opens. `run_matching_per_case_batch.py`'s optional `true\|false` argument overrides it. |
 
 ---
 
@@ -281,6 +285,7 @@ of already-interpolated MRMS. Self-contained (no thresholds/tracking fields
 | `edge_trim` | int | `7` | Pixels trimmed from each grid edge before histogramming. |
 | `clip_negative_to_zero` | bool | `false` | If `true`, negative values are floored to 0 before histogramming (off by default — real values outside `[bin_min, bin_max]` are clamped to the nearest edge bin, never dropped, so every valid pixel is guaranteed to land in some bin). |
 | `file_pattern` | str | `"**/*.nc"` | Glob restricting discovery when `interp_mrms_dir` contains non-data files alongside real ones. |
+| `skip_existing` | bool | `true` | Skip days whose `hist_mrms_<day>.nc` already exists and opens. |
 
 ---
 
@@ -319,12 +324,44 @@ rationale as `histogram_observations:` above.
 | `bin_width` | float | `0.2` | Bin width (dBZ). |
 | `edge_trim` | int | `7` | Pixels trimmed from each grid edge before histogramming. |
 | `clip_negative_to_zero` | bool | `false` | See `histogram_observations:`'s field of the same name. |
+| `skip_existing` | bool | `true` | Skip the forecast if its `hist_model_<first valid>.nc` already exists and opens. |
 
 At least one time-derivation mode is required: `valid_time_attr`+`valid_time_format`,
 **or** `init_attr`+`lead_attr`+`init_format`, **or** `valid_time_var`, **or**
 `filename_time_template`. Precedence when several are given: `filename_time_template`
 > `valid_time_var` > `valid_time_attr` > `init_attr`+`lead_attr`.
 GRIB2 forecasts need none of these; their `lead_hours` = `validDate` − `analDate`.
+
+---
+
+
+## Resuming interrupted runs (`skip_existing`)
+
+Every processing section has `skip_existing` (default `true`), so rerunning the same
+config or batch template after a crash or time limit picks up where it stopped.
+
+- **What counts as existing:** a file that is present AND opens as NetCDF. A
+  truncated file (e.g. a job killed mid-write) does not open, so it is recomputed
+  and overwritten.
+- **Per step:**
+
+  | Step | Skipped when |
+  |---|---|
+  | `fetch_mrms:` | the local file exists with the archive's size (unchanged, pre-existing) |
+  | `interpolation:` | that MRMS file's `interp_mrms_<valid>.nc` exists |
+  | `observations:` / `model:`, tracking off | that object file exists (only missing ones are computed) |
+  | `observations:` / `model:`, tracking on | every object file of the run exists; otherwise the whole run is recomputed, so tracks stay continuous |
+  | `matching:` | per_time: that time's `match_<valid>.nc` exists; per case: that case's `match_init_<init>.nc` exists |
+  | `histogram_observations:` | that day's `hist_mrms_<day>.nc` exists |
+  | `histogram_model:` | the forecast's `hist_model_<first valid>.nc` exists |
+
+- **Reporting:** each driver prints how many outputs it skipped.
+- **Recompute everything:** set `skip_existing: false` (e.g. after changing
+  thresholds, since skipping only checks that a file exists, not which settings
+  produced it).
+- **Library functions:** called directly (`run_object_id_series`,
+  `run_matching_series`, `run_batch_interpolation`), they default to
+  `skip_existing=False`.
 
 ---
 

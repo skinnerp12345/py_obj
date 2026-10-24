@@ -10,9 +10,10 @@ that peak. On a memory-constrained machine, prefer n_workers=1 (sequential --
 equivalent to just running run_matching_per_case.py directly) unless you have
 confirmed your machine has enough RAM for N cases' peak memory at once.
 
-skip_existing (off by default, matching run_matching_per_case.py's own
-run_all_cases_sequential): filters out any case whose expected
-match_init_<init_time>.nc output already exists BEFORE dispatching to the
+skip_existing (from the config's matching.skip_existing, default true; the
+optional command-line true|false overrides it): filters out any case whose
+expected match_init_<init_time>.nc output already exists (and opens as NetCDF)
+BEFORE dispatching to the
 worker pool -- lets an interrupted batch run (e.g. killed by an external time
 limit partway through hundreds of cases) resume without reprocessing already-
 completed cases, combined with real parallelism (which
@@ -24,7 +25,7 @@ Run with:
       [config_path] [skip_existing: true|false] [n_workers]
 
 All three arguments are optional; defaults are config_path=py_obj/configs/config.yaml,
-skip_existing=false, n_workers=1.
+skip_existing=the config's matching.skip_existing (true unless set false), n_workers=1.
 """
 
 import functools
@@ -38,6 +39,7 @@ sys.path.insert(0, _REPO_ROOT)
 from py_obj.batch_runner import run_cases_in_parallel
 from py_obj.config import load_config, require_section
 from py_obj.drivers.run_matching_per_case import discover_forecast_cases, expected_output_path, run_one_case
+from py_obj.output_check import readable_output
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(_THIS_DIR), "configs", "config.yaml")
 DEFAULT_N_WORKERS = 1  # see module docstring -- raise only after confirming available RAM
@@ -45,21 +47,24 @@ DEFAULT_N_WORKERS = 1  # see module docstring -- raise only after confirming ava
 
 if __name__ == "__main__":
     config_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG_PATH
-    skip_existing = sys.argv[2].strip().lower() == "true" if len(sys.argv) > 2 else False
     n_workers = int(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_N_WORKERS
 
     cfg = load_config(config_path)
     match = require_section(cfg.matching, "matching", config_path)
+    # Default: the config's matching.skip_existing (true unless set false). The optional
+    # command-line true|false (2nd argument) still overrides it, so older commands work.
+    skip_existing = sys.argv[2].strip().lower() == "true" if len(sys.argv) > 2 else match.skip_existing
     case_files = discover_forecast_cases(match.forecast_object_dir, match.file_pattern)
     print(f"Found {len(case_files)} forecast case files under '{match.forecast_object_dir}'")
 
     if skip_existing:
         before = len(case_files)
-        case_files = [f for f in case_files if not os.path.exists(expected_output_path(f, match.output_dir))]
+        case_files = [f for f in case_files if not readable_output(expected_output_path(f, match.output_dir))]
         print(f"skip_existing=True: {before - len(case_files)} case(s) already have output, "
               f"{len(case_files)} remaining to process")
 
     if case_files:
-        run_cases_in_parallel(case_files, functools.partial(run_one_case, config_path), n_workers=n_workers)
+        run_cases_in_parallel(case_files, functools.partial(run_one_case, config_path, skip_existing=skip_existing),
+                              n_workers=n_workers)
     else:
         print("Nothing left to process.")

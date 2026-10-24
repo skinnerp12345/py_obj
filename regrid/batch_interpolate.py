@@ -25,6 +25,8 @@ from multiprocessing import Pool
 import netCDF4
 import numpy as np
 
+from py_obj.output_check import readable_output
+
 from .grid_spec import GridSpec, crop_to_bbox
 from .io_mrms import MRMS_MISSING_VALUE, clip_near_zero_sentinel, load_mrms_grib2
 from .io_grid import load_target_grid
@@ -37,6 +39,7 @@ class BatchFileResult:
     output_path: str | None
     success: bool
     error: str | None = None
+    skipped_existing: bool = False  # output already existed (skip_existing); counted as a success
 
 
 @dataclass
@@ -45,9 +48,11 @@ class BatchSummary:
     n_success: int
     n_failed: int
     failures: list = field(default_factory=list)  # list[BatchFileResult], failures only
+    n_skipped_existing: int = 0  # of n_success: outputs that already existed and were not recomputed
 
     def __str__(self) -> str:
-        lines = [f"BatchSummary: {self.n_success}/{self.n_total} succeeded, {self.n_failed} failed"]
+        lines = [f"BatchSummary: {self.n_success}/{self.n_total} succeeded, {self.n_failed} failed"
+                 + (f" ({self.n_skipped_existing} already existed, skipped)" if self.n_skipped_existing else "")]
         for f in self.failures:
             lines.append(f"  FAILED: {f.input_path}: {f.error}")
         return "\n".join(lines)
@@ -166,10 +171,14 @@ def _init_worker(
     _REGRIDDER = build_conservative_regridder(cropped_src_grid, _TARGET_GRID, weight_cache_dir)
 
 
-def _process_one_file(args: tuple[str, str, str, float]) -> BatchFileResult:
-    mrms_filepath, output_dir, varname, fill_value = args
+def _process_one_file(args: tuple[str, str, str, float, bool]) -> BatchFileResult:
+    mrms_filepath, output_dir, varname, fill_value, skip_existing = args
     try:
         mrms = load_mrms_grib2(mrms_filepath)
+        if skip_existing:
+            existing = make_output_path(mrms_filepath, mrms.valid_time, output_dir)
+            if readable_output(existing):
+                return BatchFileResult(input_path=mrms_filepath, output_path=existing, success=True, skipped_existing=True)
         data = clip_near_zero_sentinel(mrms.data)
 
         src_grid_full = GridSpec(lat2d=mrms.lat2d, lon2d=mrms.lon2d)
@@ -202,6 +211,7 @@ def run_batch_interpolation(
     max_files: int | None = None,
     file_pattern: str = "**/*.grib2*",
     target_grid: GridSpec | None = None,
+    skip_existing: bool = False,
 ) -> BatchSummary:
     """Interpolate every MRMS file under input_dir onto a target grid, writing
     one NetCDF file per input under output_dir.
@@ -216,6 +226,11 @@ def run_batch_interpolation(
 
     date_range, if given, is an inclusive (start_yyyymmdd, end_yyyymmdd) filter
     applied to each discovered file's per-day subdirectory name.
+
+    skip_existing (default False here; interpolate_mrms.py passes the config
+    value): a file whose output interp_mrms_<valid>.nc already opens as NetCDF
+    (py_obj.output_check) is not regridded again; the MRMS file is still read
+    to learn its valid time, since output names come from it.
 
     max_files, if given, caps the number of files processed after discovery/date
     filtering -- a quick dry-run/smoke-test knob, not something a production run
@@ -253,7 +268,7 @@ def run_batch_interpolation(
         sample_mrms_file=files[0], bbox_buffer_deg=bbox_buffer_deg, target_grid=target_grid,
     )
 
-    task_args = [(f, output_dir, varname, fill_value) for f in files]
+    task_args = [(f, output_dir, varname, fill_value, skip_existing) for f in files]
 
     with Pool(
         processes=n_workers,
@@ -268,6 +283,7 @@ def run_batch_interpolation(
         n_success=len(results) - len(failures),
         n_failed=len(failures),
         failures=failures,
+        n_skipped_existing=sum(r.skipped_existing for r in results),
     )
     print(summary)
     return summary

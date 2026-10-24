@@ -48,6 +48,7 @@ def run_one_case(config_path: str) -> BatchSummary:
             date_range=interp.date_range,
             max_files=interp.max_files,
             file_pattern=interp.file_pattern,
+            skip_existing=interp.skip_existing,
         )
 
     if interp.target_grid_file is not None:
@@ -63,6 +64,7 @@ def run_one_case(config_path: str) -> BatchSummary:
             date_range=interp.date_range,
             max_files=interp.max_files,
             file_pattern=interp.file_pattern,
+            skip_existing=interp.skip_existing,
         )
 
     print(
@@ -91,6 +93,7 @@ def run_one_case(config_path: str) -> BatchSummary:
         date_range=interp.date_range,
         max_files=interp.max_files,
         file_pattern=interp.file_pattern,
+        skip_existing=interp.skip_existing,
     )
 
 

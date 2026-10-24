@@ -75,6 +75,7 @@ def run_one_case(config_path: str) -> list[str]:
         mixed_length_thresh_km=linear.mixed_length_threshold_km,
         storm_mode_classification=linear.storm_mode_classification,
         system_boundary_thresh=linear.system_boundary_threshold,
+        skip_existing=obs.skip_existing,
     )
 
 

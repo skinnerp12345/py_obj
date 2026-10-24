@@ -69,6 +69,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import load_config, require_section
 from py_obj.obj_core import MatchingSummary, read_valid_time_range, run_matching_series
+from py_obj.output_check import readable_output
 
 _FILENAME_TIMESTAMP_RE = re.compile(r"(\d{8})_(\d{6})")
 
@@ -123,9 +124,11 @@ def discover_truth_files_near_window(
     return kept
 
 
-def run_one_case(config_path: str, case_file: str) -> MatchingSummary:
+def run_one_case(config_path: str, case_file: str, skip_existing: bool | None = None) -> MatchingSummary:
+    """skip_existing: None (default) uses the config's matching.skip_existing; True/False overrides it."""
     cfg = load_config(config_path)
     match = require_section(cfg.matching, "matching", config_path)
+    skip = match.skip_existing if skip_existing is None else skip_existing
 
     window_start, window_end = read_valid_time_range(case_file)
     truth_files = discover_truth_files_near_window(
@@ -147,6 +150,7 @@ def run_one_case(config_path: str, case_file: str) -> MatchingSummary:
         output_dir=match.output_dir,
         max_time_offset_minutes=match.max_time_offset_minutes,
         file_grouping="init_snapshot",
+        skip_existing=skip,
     )
 
 
@@ -161,7 +165,7 @@ def expected_output_path(case_file: str, output_dir: str) -> str:
 
 
 def run_all_cases_sequential(
-    config_path: str, skip_existing: bool = False,
+    config_path: str, skip_existing: bool | None = None,
 ) -> tuple[dict[str, MatchingSummary], dict[str, str]]:
     """Run every discovered forecast case sequentially, in one process -- the
     recommended mode on a memory-constrained machine (see module docstring).
@@ -177,7 +181,8 @@ def run_all_cases_sequential(
     expand_batch_config's skipped_no_directory/skipped_no_files) of never
     letting one bad case silently abort a whole batch.
 
-    skip_existing: if True, a case whose expected output file already exists
+    skip_existing: None (default) uses the config's matching.skip_existing
+    (default true); True/False overrides it. If set, a case whose expected output file already exists
     is skipped without re-matching -- lets an interrupted run (e.g. killed
     by an external time limit partway through hundreds of cases, a real,
     confirmed occurrence) resume cheaply instead of redoing already-completed
@@ -191,17 +196,18 @@ def run_all_cases_sequential(
     match = require_section(cfg.matching, "matching", config_path)
     case_files = discover_forecast_cases(match.forecast_object_dir, match.file_pattern)
     print(f"Found {len(case_files)} forecast case files under '{match.forecast_object_dir}'")
+    skip_existing = match.skip_existing if skip_existing is None else skip_existing
 
     results = {}
     failed = {}
     n_skipped = 0
     for i, case_file in enumerate(case_files, 1):
-        if skip_existing and os.path.exists(expected_output_path(case_file, match.output_dir)):
+        if skip_existing and readable_output(expected_output_path(case_file, match.output_dir)):
             n_skipped += 1
             continue
         print(f"--- case {i}/{len(case_files)}: {os.path.basename(case_file)} ---")
         try:
-            results[case_file] = run_one_case(config_path, case_file)
+            results[case_file] = run_one_case(config_path, case_file, skip_existing=skip_existing)
         except Exception as e:
             print(f"  FAILED: {type(e).__name__}: {e}")
             failed[case_file] = f"{type(e).__name__}: {e}"

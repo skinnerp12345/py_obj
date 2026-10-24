@@ -57,6 +57,7 @@ def run_one_case(config_path: str) -> MatchingSummary:
         ti_threshold=match.ti_threshold,
         output_dir=match.output_dir,
         max_time_offset_minutes=match.max_time_offset_minutes,
+        skip_existing=match.skip_existing,
     )
 
 

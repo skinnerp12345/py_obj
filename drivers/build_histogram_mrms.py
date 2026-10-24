@@ -29,6 +29,7 @@ sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import HistogramObservationConfig, load_config, require_section
 from py_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
+from py_obj.output_check import readable_output
 from py_obj.obj_core import conus_mask, conus_mask_east
 from py_obj.regrid import load_mrms_netcdf
 
@@ -75,8 +76,12 @@ def run_one_case(config_path: str) -> list[str]:
 
     os.makedirs(hist_cfg.output_dir, exist_ok=True)
     out_paths = []
+    n_skipped = 0
     for day in sorted(by_day):
         files = sorted(by_day[day])
+        if hist_cfg.skip_existing and readable_output(os.path.join(hist_cfg.output_dir, f"hist_mrms_{day}.nc")):
+            n_skipped += 1
+            continue
         slices = []
         for f in files:
             field = load_mrms_netcdf(f, varname=hist_cfg.var_name, lat_name=hist_cfg.lat_name, lon_name=hist_cfg.lon_name)
@@ -99,6 +104,8 @@ def run_one_case(config_path: str) -> list[str]:
         out_paths.append(out_path)
         print(f"  wrote {out_path} ({len(slices)} slices, {sum(s.hist.sum() for s in slices)} total counts)")
 
+    if n_skipped:
+        print(f"skip_existing: {n_skipped} of {len(by_day)} day(s) already had a histogram file -- not recomputed")
     return out_paths
 
 

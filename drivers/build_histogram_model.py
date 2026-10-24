@@ -34,6 +34,7 @@ from py_obj.config import HistogramModelConfig, load_config, require_section
 from py_obj.filename_time import parse_filename_times
 from py_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
 from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
+from py_obj.output_check import readable_output
 from py_obj.regrid import read_grib2_times
 
 _LEAD_UNITS_TO_HOURS = {"hours": 1.0, "minutes": 1.0 / 60.0, "seconds": 1.0 / 3600.0}
@@ -100,6 +101,12 @@ def run_one_case(config_path: str) -> str:
         f"Found {len(manifest)} manifest entries under '{hist_cfg.input_dir}' "
         f"(member_subdirs={hist_cfg.member_subdirs}, stacked_members={hist_cfg.stacked_members})"
     )
+    # The output is named from the earliest valid time, known from the manifest
+    # before any data is read -- so an existing result can be skipped up front.
+    existing = os.path.join(hist_cfg.output_dir, f"hist_model_{min(e.valid_time for e in manifest):%Y%m%d_%H%M%S}.nc")
+    if hist_cfg.skip_existing and readable_output(existing):
+        print(f"skip_existing: '{existing}' already exists -- nothing to do")
+        return existing
     print(
         f"Building histogram: var_name={hist_cfg.var_name}, bins=[{hist_cfg.bin_min}, {hist_cfg.bin_max}] "
         f"by {hist_cfg.bin_width}, edge_trim={hist_cfg.edge_trim}, clip_negative_to_zero={hist_cfg.clip_negative_to_zero}"

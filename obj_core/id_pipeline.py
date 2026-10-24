@@ -18,6 +18,8 @@ from typing import Callable, Literal
 
 import numpy as np
 
+from py_obj.output_check import readable_output
+
 from .identify import GridGeometry, StormObject, identify_objects, precompute_grid_geometry
 from .object_io import IdentificationResult, SeriesEntry, write_object_file
 from .tracking import track_objects_incremental
@@ -44,6 +46,36 @@ def _default_output_name(
     raise ValueError(f"Unknown file_grouping '{grouping}'")
 
 
+def _expected_output_name(grouping: FileGrouping, entry: SeriesEntry, init_time: datetime | None) -> str | None:
+    """The object file name this entry would be written to (None if unknowable,
+    e.g. init_snapshot without an init_time -- such entries are never skipped)."""
+    if grouping == "init_snapshot":
+        it = entry.init_time if entry.init_time is not None else init_time
+        return None if it is None else _default_output_name(grouping, entry.member_id, entry.valid_time, it)
+    return _default_output_name(grouping, entry.member_id, entry.valid_time)
+
+
+def _drop_existing(manifest, grouping, init_time, output_dir, track_in_time) -> list:
+    """skip_existing filtering for run_object_id_series (see its docstring)."""
+    names = [_expected_output_name(grouping, e, init_time) for e in manifest]
+    unique = sorted({n for n in names if n is not None})
+    have = {n: readable_output(os.path.join(output_dir, n)) for n in unique}
+    n_have = sum(have.values())
+    if None not in names and unique and n_have == len(unique):
+        print(f"skip_existing: all {n_have} output file(s) already exist under '{output_dir}' -- nothing to do")
+        return []
+    if n_have == 0:
+        return manifest
+    if track_in_time:
+        print(f"skip_existing: {n_have} of {len(unique)} output file(s) exist, but tracking is on -- "
+              "recomputing the whole run so tracks stay continuous")
+        return manifest
+    keep = [e for e, n in zip(manifest, names) if n is None or not have[n]]
+    print(f"skip_existing: {n_have} of {len(unique)} output file(s) already exist -- "
+          f"processing only the {len(unique) - n_have} missing one(s)")
+    return keep
+
+
 def run_object_id_series(
     manifest: list[SeriesEntry],
     loader_fn: Callable[[SeriesEntry], object],  # -> anything with .lat2d/.lon2d/.data, e.g. GriddedField
@@ -62,6 +94,7 @@ def run_object_id_series(
     mixed_length_thresh_km: float = 100.0,
     storm_mode_classification: bool = False,
     system_boundary_thresh: float | None = None,
+    skip_existing: bool = False,
 ) -> list[str]:
     """Identify (and optionally track) objects for every entry in `manifest`,
     writing output object file(s) under `output_dir` per `file_grouping`.
@@ -89,11 +122,23 @@ def run_object_id_series(
     series) are tracked independently of one another. track_id values are
     unique across the whole call, not just within one member, so consolidated
     files (e.g. "full") never have colliding ids across members.
+
+    skip_existing (default False here; drivers pass the config value): an output
+    file counts as existing if it opens as NetCDF (py_obj.output_check). If every
+    expected output exists, nothing is recomputed. Otherwise, with tracking OFF
+    only the entries whose output file is missing are processed; with tracking
+    ON the whole run is recomputed, since tracks link consecutive times and must
+    stay continuous. Returns only the paths written in this call.
     """
     if not manifest:
         raise ValueError("run_object_id_series: manifest must be non-empty")
 
     os.makedirs(output_dir, exist_ok=True)
+
+    if skip_existing:
+        manifest = _drop_existing(manifest, file_grouping, init_time, output_dir, track_in_time)
+        if not manifest:
+            return []
 
     by_member: dict[str | None, list[SeriesEntry]] = defaultdict(list)
     for entry in manifest:

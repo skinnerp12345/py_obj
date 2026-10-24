@@ -398,6 +398,20 @@ never overwrite each other's per-case configs. Remove that one directory when
 done (`shutil.rmtree(expanded.config_dir)`), which is what every `*_batch.py`
 driver does.
 
+### Resuming an interrupted run or batch
+
+Every processing section has `skip_existing: true` by default: outputs that already
+exist (and open as NetCDF) are not recomputed, so rerunning the same config, or the same
+`*_batch.py` command and template, after a crash or time limit continues where it stopped.
+Each driver prints how many outputs it skipped.
+- **Truncated files:** a file left half-written by a crash fails to open, so it is
+  recomputed.
+- **Tracking:** with tracking on, an object run is skipped only if every one of its
+  files exists; otherwise it is recomputed whole, so tracks stay continuous.
+- **Recompute everything:** set `skip_existing: false` in the section.
+
+Details per step: "Resuming interrupted runs" in `configs/CONFIG_REFERENCE.md`.
+
 ## Reading the output
 
 ```python

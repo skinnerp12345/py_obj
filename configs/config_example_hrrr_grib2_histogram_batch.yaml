@@ -29,3 +29,4 @@ histogram_model:
   bin_max: 80.0                   # outside [bin_min, bin_max] are clamped into the end bins
   bin_width: 0.2
   edge_trim: 7
+  skip_existing: true             # default: rerunning resumes a stopped batch; false = overwrite
