@@ -8,6 +8,8 @@ specific config dataclass.
 
 import glob
 import os
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable
 
 from py_obj.filename_time import parse_filename_times
@@ -256,3 +258,76 @@ def _build_grib2_manifest(
         init_time, valid_time = times(f)
         manifest.append(SeriesEntry(valid_time=valid_time, filepath=f, member_id=member_id, init_time=init_time))
     return manifest, loader
+
+
+@dataclass
+class ManifestPeek:
+    """What peek_first_file learns without reading every file."""
+    first_file: str
+    n_files: int  # matching files found (all members)
+    n_entries: int  # manifest entries build_model_manifest would produce (files x members if stacked)
+    init_time: datetime | None  # the first file's init time (None if not derivable)
+    valid_time: datetime  # the first file's valid time
+
+
+def peek_first_file(
+    input_dir: str,
+    file_pattern: str,
+    member_subdirs: bool,
+    stacked_members: bool,
+    var_name: str,
+    lat_name: str | None = None,
+    lon_name: str | None = None,
+    init_attr: str | None = None,
+    lead_attr: str | None = None,
+    lead_units: str = "hours",
+    init_format: str | None = None,
+    valid_time_attr: str | None = None,
+    valid_time_format: str | None = None,
+    valid_time_var: str | None = None,
+    member_subdir_pattern: str = "*",
+    init_time_attr: str = "init_time",
+    filename_time_template: str | None = None,
+    init_time_offset_minutes: int | None = None,
+    file_format: str = "netcdf",
+    grib_selector=None,
+) -> ManifestPeek:
+    """Discover files exactly as build_model_manifest does, but read times
+    from the FIRST (sorted) file only -- for a cheap skip_existing check
+    before the full manifest is built (which reads every file's header).
+    Takes the same arguments as build_model_manifest (lat_name/lon_name are
+    unused here), so a caller can pass one shared set of keyword arguments.
+
+    The caller must confirm an existing output really covers this case (e.g.
+    its n_source_files equals n_entries/n_files) before skipping: a directory
+    holding several forecast inits, or a first file that isn't the earliest
+    lead, gives a candidate that won't match, and the caller then falls back
+    to the normal full-manifest path."""
+    if file_format not in ("netcdf", "grib2"):
+        raise ValueError(f"file_format must be 'netcdf' or 'grib2', got {file_format!r}")
+    flat = stacked_members and not member_subdirs  # same branch order as build_model_manifest
+    files = [f for _, f in _discover(input_dir, file_pattern, member_subdirs and not flat, member_subdir_pattern)]
+    first = files[0]
+
+    if file_format == "grib2":
+        if filename_time_template is not None:
+            init_time, valid_time = parse_filename_times(first, filename_time_template, init_time_offset_minutes)
+            if valid_time is None:
+                raise ValueError(f"filename_time_template {filename_time_template!r} has no '{{valid:...}}' slot")
+        else:
+            init_time, valid_time = read_grib2_times(first, var_name=var_name, grib_selector=grib_selector)
+        n_entries = len(files)
+    else:
+        valid_time = read_valid_time_only(
+            first,
+            init_attr=init_attr, lead_attr=lead_attr, lead_units=lead_units, init_format=init_format,
+            valid_time_attr=valid_time_attr, valid_time_format=valid_time_format, valid_time_var=valid_time_var,
+            filename_time_template=filename_time_template,
+        )
+        init_time = _try_read_init_time(
+            first, init_attr, init_format, valid_time_attr, valid_time_format, init_time_attr,
+            filename_time_template, init_time_offset_minutes,
+        )
+        n_entries = len(files) * (infer_stacked_member_count(first, var_name) if flat else 1)
+    return ManifestPeek(first_file=first, n_files=len(files), n_entries=n_entries,
+                        init_time=init_time, valid_time=valid_time)

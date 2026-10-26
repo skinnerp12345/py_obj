@@ -33,7 +33,7 @@ sys.path.insert(0, _REPO_ROOT)
 from py_obj.config import HistogramModelConfig, load_config, require_section
 from py_obj.filename_time import parse_filename_times
 from py_obj.histogram import HistogramSlice, compute_histogram, default_bin_edges, write_histogram_file
-from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east
+from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east, peek_first_file
 from py_obj.output_check import readable_output
 from py_obj.regrid import read_grib2_times
 
@@ -79,12 +79,10 @@ def _compute_lead_hours(filepath: str, hist_cfg: HistogramModelConfig) -> float 
     return None
 
 
-def run_one_case(config_path: str) -> str:
-    cfg = load_config(config_path)
-    hist_cfg: HistogramModelConfig = require_section(cfg.histogram_model, "histogram_model", config_path)
-
-    bins = default_bin_edges(hist_cfg.bin_min, hist_cfg.bin_max, hist_cfg.bin_width)
-    manifest, loader = build_model_manifest(
+def _manifest_kwargs(hist_cfg: HistogramModelConfig) -> dict:
+    """The file-discovery/time arguments shared by build_model_manifest and
+    peek_first_file."""
+    return dict(
         input_dir=hist_cfg.input_dir, file_pattern=hist_cfg.file_pattern,
         member_subdirs=hist_cfg.member_subdirs, stacked_members=hist_cfg.stacked_members,
         var_name=hist_cfg.var_name, lat_name=hist_cfg.lat_name, lon_name=hist_cfg.lon_name,
@@ -97,6 +95,45 @@ def run_one_case(config_path: str) -> str:
         init_time_offset_minutes=hist_cfg.init_time_offset_minutes,
         file_format=hist_cfg.file_format, grib_selector=hist_cfg.grib_selector,
     )
+
+
+def existing_histogram(hist_cfg: HistogramModelConfig) -> str | None:
+    """Fast skip_existing check made BEFORE the full manifest is built (which
+    reads every file's header -- about 1 s per GRIB2 file). The output is
+    named from the earliest valid time; this reads only the first (sorted)
+    file's valid time and returns the existing hist_model_<valid>.nc if it is
+    readable AND its n_source_files equals the number of files found now.
+    Otherwise returns None and the full manifest path (with its own check)
+    runs as usual -- e.g. when the first file isn't the earliest lead, or an
+    earlier output covered a different set of files."""
+    if not hist_cfg.skip_existing:
+        return None
+    peek = peek_first_file(**_manifest_kwargs(hist_cfg))
+    path = os.path.join(hist_cfg.output_dir, f"hist_model_{peek.valid_time:%Y%m%d_%H%M%S}.nc")
+    if not readable_output(path):
+        return None
+    with netCDF4.Dataset(path, "r") as ds:
+        file_n = int(getattr(ds, "n_source_files", -1))
+    if file_n == peek.n_files:
+        return path
+    print(
+        f"skip_existing: '{path}' exists but covers {file_n} source files, not {peek.n_files} "
+        f"-- checking the full file list"
+    )
+    return None
+
+
+def run_one_case(config_path: str) -> str:
+    cfg = load_config(config_path)
+    hist_cfg: HistogramModelConfig = require_section(cfg.histogram_model, "histogram_model", config_path)
+
+    bins = default_bin_edges(hist_cfg.bin_min, hist_cfg.bin_max, hist_cfg.bin_width)
+    existing = existing_histogram(hist_cfg)
+    if existing is not None:
+        print(f"skip_existing: '{existing}' already exists for this case -- nothing to do (only the first file was read)")
+        return existing
+
+    manifest, loader = build_model_manifest(**_manifest_kwargs(hist_cfg))
     print(
         f"Found {len(manifest)} manifest entries under '{hist_cfg.input_dir}' "
         f"(member_subdirs={hist_cfg.member_subdirs}, stacked_members={hist_cfg.stacked_members})"

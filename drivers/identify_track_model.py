@@ -17,19 +17,21 @@ If no config path is given, uses py_obj/configs/config.yaml.
 import os
 import sys
 
+import netCDF4
+
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _REPO_ROOT)
 
 from py_obj.config import ModelConfig, load_config, require_section
-from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east, run_object_id_series
+from py_obj.obj_core import build_model_manifest, conus_mask, conus_mask_east, peek_first_file, run_object_id_series
+from py_obj.output_check import readable_output
 
 
-def build_manifest(model: ModelConfig):
-    """Thin adapter over the shared py_obj.obj_core.build_model_manifest
-    (promoted there so the histogram-building driver can reuse the same file-
-    discovery logic without duplicating it)."""
-    return build_model_manifest(
+def _manifest_kwargs(model: ModelConfig) -> dict:
+    """The file-discovery/time arguments shared by build_model_manifest and
+    peek_first_file."""
+    return dict(
         input_dir=model.input_dir, file_pattern=model.file_pattern,
         member_subdirs=model.member_subdirs, stacked_members=model.stacked_members,
         var_name=model.var_name, lat_name=model.lat_name, lon_name=model.lon_name,
@@ -45,10 +47,51 @@ def build_manifest(model: ModelConfig):
     )
 
 
+def build_manifest(model: ModelConfig):
+    """Thin adapter over the shared py_obj.obj_core.build_model_manifest
+    (promoted there so the histogram-building driver can reuse the same file-
+    discovery logic without duplicating it)."""
+    return build_model_manifest(**_manifest_kwargs(model))
+
+
+def existing_init_snapshot(model: ModelConfig) -> str | None:
+    """Fast skip_existing check for file_grouping='init_snapshot', made BEFORE
+    the full manifest is built (which reads every file's header -- about 1 s
+    per GRIB2 file). Reads only the first file's init time and returns the
+    existing obj_init_<init>.nc if it is readable AND its own init_time and
+    n_source_files match this case (so a directory holding several inits, or a
+    partial earlier output, is never skipped by mistake). Otherwise returns
+    None, and run_object_id_series's own per-file check runs as usual."""
+    if not (model.skip_existing and model.file_grouping == "init_snapshot"):
+        return None
+    peek = peek_first_file(**_manifest_kwargs(model))
+    if peek.init_time is None:
+        return None
+    path = os.path.join(model.object_output_dir, f"obj_init_{peek.init_time:%Y%m%d_%H%M%S}.nc")
+    if not readable_output(path):
+        return None
+    with netCDF4.Dataset(path, "r") as ds:
+        file_init = getattr(ds, "init_time", None)
+        file_n = int(getattr(ds, "n_source_files", -1))
+    if file_init == peek.init_time.isoformat() and file_n == peek.n_entries:
+        return path
+    print(
+        f"skip_existing: '{path}' exists but does not match this case "
+        f"(init_time {file_init} vs. {peek.init_time.isoformat()}, n_source_files {file_n} vs. {peek.n_entries}) "
+        f"-- checking the full file list"
+    )
+    return None
+
+
 def run_one_case(config_path: str) -> list[str]:
     cfg = load_config(config_path)
     model = require_section(cfg.model, "model", config_path)
     linear = require_section(cfg.linear_classification, "linear_classification", config_path)
+
+    existing = existing_init_snapshot(model)
+    if existing is not None:
+        print(f"skip_existing: '{existing}' already exists for this case -- nothing to do (only the first file was read)")
+        return []
 
     manifest, loader = build_manifest(model)
 

@@ -408,6 +408,9 @@ Each driver prints how many outputs it skipped.
   recomputed.
 - **Tracking:** with tracking on, an object run is skipped only if every one of its
   files exists; otherwise it is recomputed whole, so tracks stay continuous.
+- **Speed:** `identify_track_model.py` (`file_grouping: init_snapshot`) and
+  `build_histogram_model.py` decide from the first file alone (about 1 s per case),
+  without reading every forecast file first.
 - **Recompute everything:** set `skip_existing: false` in the section.
 
 Details per step: "Resuming interrupted runs" in `configs/CONFIG_REFERENCE.md`.

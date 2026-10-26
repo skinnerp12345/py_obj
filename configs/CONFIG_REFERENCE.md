@@ -355,6 +355,14 @@ config or batch template after a crash or time limit picks up where it stopped.
   | `histogram_observations:` | that day's `hist_mrms_<day>.nc` exists |
   | `histogram_model:` | the forecast's `hist_model_<first valid>.nc` exists |
 
+- **Fast check for whole forecast cases:** `model:` with `file_grouping:
+  init_snapshot` and `histogram_model:` check the case's output from the
+  **first** file's times only, before reading every file's header (about 1 s per
+  full-CONUS GRIB2 file). The existing file is skipped only if it also matches
+  this case: object files must have the same `init_time` and `n_source_files`
+  (files x members), and histogram files the same `n_source_files`. Otherwise
+  the normal full check runs, e.g. when the directory holds several forecast
+  inits or the first file isn't the earliest lead.
 - **Reporting:** each driver prints how many outputs it skipped.
 - **Recompute everything:** set `skip_existing: false` (e.g. after changing
   thresholds, since skipping only checks that a file exists, not which settings
