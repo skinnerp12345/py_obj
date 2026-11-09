@@ -46,6 +46,17 @@ conda env create -f environment.yml
 conda activate py_obj_env
 ```
 
+**Windows:** `environment.yml` cannot be solved on native Windows. conda-forge
+has no Windows build of the ESMF library that `xesmf` needs for MRMS
+interpolation; the error reads "nothing provides esmf 8.9.0.* needed by esmpy".
+Two options:
+- **Full library:** install [WSL2](https://learn.microsoft.com/windows/wsl/install)
+  (`wsl --install`), then follow the steps above inside Ubuntu.
+- **Everything except MRMS interpolation:** `conda env create -f environment_windows.yml`
+  (the same packages without `xesmf`/`esmpy`). Fetching, object identification,
+  tracking, matching, histograms and py_obj_plotting all work; only
+  `drivers/interpolate_mrms.py` needs `xesmf`.
+
 Every module in this library imports itself as `py_obj.xxx` (e.g. `from
 py_obj.config import load_config`), matching both this GitHub repo's own
 name and the folder name a plain `git clone` produces — so nothing further

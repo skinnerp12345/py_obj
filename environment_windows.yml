@@ -1,0 +1,28 @@
+# Windows (win-64) environment: identical to environment.yml WITHOUT xesmf/esmpy.
+# conda-forge has no Windows build of the ESMF library that xesmf needs (Windows
+# esmf stops at 8.4.x, and xesmf excludes esmpy 8.4.0-8.4.2), so environment.yml
+# cannot be solved on Windows. Everything works with this file EXCEPT MRMS
+# interpolation (drivers/interpolate_mrms.py, regrid.build_conservative_regridder),
+# which needs xesmf. For the full library on Windows use WSL2 with environment.yml.
+#
+#   conda env create -f environment_windows.yml
+name: py_obj_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy=2.3
+  - scipy=1.16
+  - xarray=2025.10
+  - netcdf4=1.7
+  - pygrib=2.1
+  - scikit-image=0.25
+  - pyproj=3.7
+  - shapely=2.1
+  - matplotlib=3.10
+  - cartopy=0.25
+  - pyyaml=6.0
+  - requests=2.32
+  - jupyter
+  - nbformat=5.10
+  - pytest=9.1
