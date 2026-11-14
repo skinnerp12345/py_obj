@@ -20,7 +20,7 @@ MPAS) are bundled as concrete configurations, not as separate code paths.
 
 ```
 py_obj/
-  regrid/          conservative MRMS-to-model-grid regridding (xesmf/ESMF)
+  regrid/          MRMS-to-model-grid regridding: conservative (xesmf/ESMF) or Cressman (scipy)
   obj_core/        object identification, tracking, matching, CONUS masking
   histogram/       reflectivity-distribution histograms + matched-percentile thresholds
   drivers/         standalone, independently-runnable CLI scripts (see drivers/README.md)
@@ -52,10 +52,11 @@ interpolation; the error reads "nothing provides esmf 8.9.0.* needed by esmpy".
 Two options:
 - **Full library:** install [WSL2](https://learn.microsoft.com/windows/wsl/install)
   (`wsl --install`), then follow the steps above inside Ubuntu.
-- **Everything except MRMS interpolation:** `conda env create -f environment_windows.yml`
+- **Everything except conservative MRMS interpolation:** `conda env create -f environment_windows.yml`
   (the same packages without `xesmf`/`esmpy`). Fetching, object identification,
-  tracking, matching, histograms and py_obj_plotting all work; only
-  `drivers/interpolate_mrms.py` needs `xesmf`.
+  tracking, matching, histograms, py_obj_plotting and Cressman interpolation
+  (`interpolation.method: cressman`) all work; only conservative interpolation
+  needs `xesmf`.
 
 Every module in this library imports itself as `py_obj.xxx` (e.g. `from
 py_obj.config import load_config`), matching both this GitHub repo's own

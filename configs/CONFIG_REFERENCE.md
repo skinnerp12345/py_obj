@@ -50,9 +50,33 @@ grid.
 | `max_files` | int \| null | `null` | Caps the file count after discovery/date filtering; `null` = no cap. |
 | `file_pattern` | str | `"**/*.grib2*"` | Glob restricting discovery to one MRMS product when a date directory holds more than one (e.g. `"**/*MergedReflectivityQCComposite*"`). |
 | `skip_existing` | bool | `true` | Don't regrid an MRMS file whose output `interp_mrms_<valid>.nc` already exists and opens; `false` = always recompute and overwrite. See [Resuming interrupted runs](#resuming-interrupted-runs-skip_existing). |
+| `method` | str | `conservative` | `conservative` (ESMF conservative remapping via xesmf) or `cressman` (single-pass, fixed-radius Cressman). See [Cressman interpolation](#cressman-interpolation-method-cressman). |
+| `cressman_radius_km` | float | — | Radius of influence (km). Required with `method: cressman`, rejected otherwise. |
 
 Exactly one target-grid mode is required: `target_grid_file`, **or** all five
 of `target_grid_sw_lat`/`target_grid_sw_lon`/`target_grid_dx_km`/`target_grid_nx`/`target_grid_ny`.
+
+### Cressman interpolation (`method: cressman`)
+
+Each target point is the weighted mean of the native MRMS points within
+`cressman_radius_km`, weighted (R² − r²) / (R² + r²); a single pass, no
+successive corrections.
+- **Missing data:** handled exactly as in conservative mode. MRMS −999 (no coverage)
+  is left out of the average, −99 is set to 0 first, and a point whose
+  weighted valid fraction is below 0.5, or with no MRMS point inside the radius,
+  gets the fill value.
+- **Output:** the variable is `refl_cress` (conservative: `refl_consv`), so read
+  these files with `var_name: refl_cress` in `observations:` or
+  `histogram_observations:`. Files carry `interpolation_method` and
+  `cressman_radius_km` global attributes.
+- **Radius and cost:** a larger radius smooths more (lower maxima). The weights are
+  cached in `weight_cache_dir` like the conservative ones, and their size grows
+  with radius²: about π R² native MRMS points (~1 km apart) per target point.
+  An operator above ~1.5 billion weights is refused before it is built. The
+  radius must also stay below the source crop buffer (0.3°, about 20-33 km
+  depending on latitude).
+- **No xesmf needed:** this method uses scipy only, so it also works in
+  `environment_windows.yml`.
 
 ---
 

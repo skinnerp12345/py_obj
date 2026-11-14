@@ -113,6 +113,11 @@ class InterpolationConfig:
     # Skip outputs that already exist (and open as NetCDF) instead of recomputing them --
     # lets an interrupted run or batch resume. false = always recompute and overwrite.
     skip_existing: bool = True
+    # Interpolation method: "conservative" (default, ESMF conservative remapping) or
+    # "cressman" (single-pass, fixed-radius Cressman; needs cressman_radius_km, the
+    # radius of influence). Output variable: refl_consv / refl_cress respectively.
+    method: str = "conservative"
+    cressman_radius_km: float | None = None
 
 
 @dataclass
@@ -537,6 +542,26 @@ def _validate_target_grid_mode(section: dict, section_name: str) -> None:
         )
 
 
+def _validate_interp_method(section: dict, section_name: str) -> None:
+    """method: "conservative" (default; null counts as unset) or "cressman", which
+    requires cressman_radius_km > 0. A radius with "conservative" is rejected."""
+    method = section.get("method") or "conservative"
+    if method not in ("conservative", "cressman"):
+        raise ValueError(f"Config section '{section_name}': method must be 'conservative' or 'cressman', got {method!r}")
+    radius = section.get("cressman_radius_km")
+    if method == "cressman":
+        if radius is None or isinstance(radius, bool) or not isinstance(radius, (int, float)) or not radius > 0:
+            raise ValueError(
+                f"Config section '{section_name}': method 'cressman' requires cressman_radius_km "
+                f"(radius of influence, km) > 0, got {radius!r}"
+            )
+    elif radius is not None:
+        raise ValueError(
+            f"Config section '{section_name}': cressman_radius_km is only used with method 'cressman' "
+            f"(method is {method!r})"
+        )
+
+
 def _validate_target_grid_format(section: dict, section_name: str) -> None:
     """target_grid_format applies to target_grid_file mode: "netcdf" (default) reads
     target_lat_name/target_lon_name; "grib2" reads the grid of one GRIB2 message.
@@ -628,6 +653,7 @@ def load_config(path: str) -> Config:
         _require_fields(interp_section, "interpolation", ("raw_mrms_dir", "interp_mrms_dir"))
         _validate_target_grid_mode(interp_section, "interpolation")
         _validate_target_grid_format(interp_section, "interpolation")
+        _validate_interp_method(interp_section, "interpolation")
         date_range = interp_section.get("date_range")
         interpolation = InterpolationConfig(
             raw_mrms_dir=interp_section["raw_mrms_dir"],
@@ -654,6 +680,8 @@ def load_config(path: str) -> Config:
             max_files=interp_section.get("max_files"),
             file_pattern=interp_section.get("file_pattern", "**/*.grib2*"),
             skip_existing=_skip_existing(interp_section, "interpolation"),
+            method=interp_section.get("method") or "conservative",
+            cressman_radius_km=interp_section.get("cressman_radius_km"),
         )
         _resolve_paths(interpolation, _INTERPOLATION_PATH_FIELDS, base_dir)
 

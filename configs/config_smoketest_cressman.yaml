@@ -1,0 +1,17 @@
+# SMOKE TEST: Cressman interpolation of the 3 bundled MRMS files onto a small
+# user-defined grid (same files and grid as config_smoketest_corner_grid.yaml).
+#   python drivers/interpolate_mrms.py configs/config_smoketest_cressman.yaml
+# Output variable: refl_cress (read it downstream with var_name: refl_cress).
+
+interpolation:
+  raw_mrms_dir: ../sample_data/mpas_case/mrms
+  interp_mrms_dir: output/interp_mrms_smoketest_cressman
+  target_grid_sw_lat: 42.0
+  target_grid_sw_lon: -86.0
+  target_grid_dx_km: 3.0
+  target_grid_nx: 50
+  target_grid_ny: 50
+  method: cressman
+  cressman_radius_km: 3.0        # radius of influence; required for cressman, no default
+  n_workers: 2
+  weight_cache_dir: output/weight_cache

@@ -13,7 +13,7 @@ from .io_mrms import (
     load_mrms_grib2,
     load_mrms_netcdf,
 )
-from .regridder import RegridError, build_conservative_regridder, regrid_field
+from .regridder import CressmanRegridder, RegridError, build_conservative_regridder, build_cressman_regridder, regrid_field
 from .batch_interpolate import (
     BatchFileResult,
     BatchSummary,
@@ -52,6 +52,8 @@ __all__ = [
     "load_mrms_netcdf",
     "RegridError",
     "build_conservative_regridder",
+    "build_cressman_regridder",
+    "CressmanRegridder",
     "regrid_field",
     "BatchFileResult",
     "BatchSummary",

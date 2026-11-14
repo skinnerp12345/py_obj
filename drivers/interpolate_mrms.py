@@ -33,6 +33,7 @@ def run_one_case(config_path: str) -> BatchSummary:
         print(f"Date range: {interp.date_range[0]} - {interp.date_range[1]}")
     if interp.max_files:
         print(f"max_files: {interp.max_files} (smoke-test/dry-run cap)")
+    print(f"Method: {interp.method}" + (f" (radius {interp.cressman_radius_km:g} km)" if interp.method == "cressman" else ""))
 
     if interp.target_grid_file is not None and interp.target_grid_format == "grib2":
         print(f"Target grid: GRIB2 '{interp.target_grid_file}' "
@@ -49,6 +50,8 @@ def run_one_case(config_path: str) -> BatchSummary:
             max_files=interp.max_files,
             file_pattern=interp.file_pattern,
             skip_existing=interp.skip_existing,
+            method=interp.method,
+            cressman_radius_km=interp.cressman_radius_km,
         )
 
     if interp.target_grid_file is not None:
@@ -65,6 +68,8 @@ def run_one_case(config_path: str) -> BatchSummary:
             max_files=interp.max_files,
             file_pattern=interp.file_pattern,
             skip_existing=interp.skip_existing,
+            method=interp.method,
+            cressman_radius_km=interp.cressman_radius_km,
         )
 
     print(
@@ -94,6 +99,8 @@ def run_one_case(config_path: str) -> BatchSummary:
         max_files=interp.max_files,
         file_pattern=interp.file_pattern,
         skip_existing=interp.skip_existing,
+        method=interp.method,
+        cressman_radius_km=interp.cressman_radius_km,
     )
 
 

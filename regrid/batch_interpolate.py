@@ -30,7 +30,10 @@ from py_obj.output_check import readable_output
 from .grid_spec import GridSpec, crop_to_bbox
 from .io_mrms import MRMS_MISSING_VALUE, clip_near_zero_sentinel, load_mrms_grib2
 from .io_grid import load_target_grid
-from .regridder import build_conservative_regridder, regrid_field
+from .regridder import build_conservative_regridder, build_cressman_regridder, regrid_field
+
+METHODS = ("conservative", "cressman")
+DEFAULT_VARNAMES = {"conservative": "refl_consv", "cressman": "refl_cress"}
 
 
 @dataclass
@@ -102,10 +105,12 @@ def write_interpolated_mrms_netcdf(
     varname: str = "refl_consv",
     fill_value: float = MRMS_MISSING_VALUE,
     source_file: str | None = None,
+    extra_attrs: dict | None = None,
 ) -> None:
     """Write lat/lon/<varname> to a NetCDF file, using the same variable
     naming convention this library's own load_mrms_netcdf() (regrid/io_mrms.py)
-    expects ('lat', 'lon', and a reflectivity variable)."""
+    expects ('lat', 'lon', and a reflectivity variable). extra_attrs are written
+    as global attributes (e.g. the interpolation method)."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     ny, nx = data2d.shape
@@ -124,6 +129,8 @@ def write_interpolated_mrms_netcdf(
         ds.valid_time = valid_time.isoformat()
         if source_file is not None:
             ds.source_file = os.path.basename(source_file)
+        for k, v in (extra_attrs or {}).items():
+            ds.setncattr(k, v)
 
 
 # Worker-process globals, populated once by _init_worker (either directly by the
@@ -133,6 +140,7 @@ _TARGET_GRID: GridSpec | None = None
 _SRC_BBOX: tuple[float, float, float, float] | None = None
 _REGRIDDER = None
 _BBOX_BUFFER_DEG = 0.3
+_ATTRS: dict = {}
 
 
 def _init_worker(
@@ -143,8 +151,10 @@ def _init_worker(
     sample_mrms_file: str,
     bbox_buffer_deg: float = 0.3,
     target_grid: GridSpec | None = None,
+    method: str = "conservative",
+    cressman_radius_km: float | None = None,
 ) -> None:
-    global _TARGET_GRID, _SRC_BBOX, _REGRIDDER, _BBOX_BUFFER_DEG
+    global _TARGET_GRID, _SRC_BBOX, _REGRIDDER, _BBOX_BUFFER_DEG, _ATTRS
 
     _BBOX_BUFFER_DEG = bbox_buffer_deg
     # target_grid (an already-built GridSpec, e.g. from build_corner_spacing_grid)
@@ -168,7 +178,12 @@ def _init_worker(
     src_grid_full = GridSpec(lat2d=sample.lat2d, lon2d=sample.lon2d)
     cropped_src_grid, _ = crop_to_bbox(src_grid_full, sample.data, *_SRC_BBOX, buffer_deg=_BBOX_BUFFER_DEG)
 
-    _REGRIDDER = build_conservative_regridder(cropped_src_grid, _TARGET_GRID, weight_cache_dir)
+    if method == "cressman":
+        _REGRIDDER = build_cressman_regridder(cropped_src_grid, _TARGET_GRID, cressman_radius_km, weight_cache_dir)
+        _ATTRS = {"interpolation_method": "cressman", "cressman_radius_km": float(cressman_radius_km)}
+    else:
+        _REGRIDDER = build_conservative_regridder(cropped_src_grid, _TARGET_GRID, weight_cache_dir)
+        _ATTRS = {"interpolation_method": "conservative"}
 
 
 def _process_one_file(args: tuple[str, str, str, float, bool]) -> BatchFileResult:
@@ -189,7 +204,7 @@ def _process_one_file(args: tuple[str, str, str, float, bool]) -> BatchFileResul
         out_path = make_output_path(mrms_filepath, mrms.valid_time, output_dir)
         write_interpolated_mrms_netcdf(
             out_path, _TARGET_GRID.lat2d, _TARGET_GRID.lon2d, out, mrms.valid_time,
-            varname=varname, fill_value=fill_value, source_file=mrms_filepath,
+            varname=varname, fill_value=fill_value, source_file=mrms_filepath, extra_attrs=_ATTRS,
         )
         return BatchFileResult(input_path=mrms_filepath, output_path=out_path, success=True)
     except Exception as exc:  # noqa: BLE001 -- deliberate: collect per-file failures, don't crash the pool
@@ -205,13 +220,15 @@ def run_batch_interpolation(
     weight_cache_dir: str = "weight_cache",
     n_workers: int = 8,
     bbox_buffer_deg: float = 0.3,
-    varname: str = "refl_consv",
+    varname: str | None = None,
     fill_value: float = MRMS_MISSING_VALUE,
     date_range: tuple[str, str] | None = None,
     max_files: int | None = None,
     file_pattern: str = "**/*.grib2*",
     target_grid: GridSpec | None = None,
     skip_existing: bool = False,
+    method: str = "conservative",
+    cressman_radius_km: float | None = None,
 ) -> BatchSummary:
     """Interpolate every MRMS file under input_dir onto a target grid, writing
     one NetCDF file per input under output_dir.
@@ -244,7 +261,25 @@ def run_batch_interpolation(
     unfiltered glob sweeping up the wrong product would silently interpolate and
     write out non-reflectivity values as if they were dBZ. e.g.
     "**/*MergedReflectivityQCComposite*" selects only that product.
+
+    method: "conservative" (default; ESMF conservative remapping via xesmf) or
+    "cressman" (single-pass, fixed-radius Cressman weighting of the native points
+    within cressman_radius_km of each target point; see
+    regridder.build_cressman_regridder). The radius is required for "cressman",
+    rejected otherwise, and must be smaller than the source crop buffer
+    (bbox_buffer_deg) so edge targets see all their source points. varname
+    defaults to "refl_consv" / "refl_cress" by method. Output files carry an
+    interpolation_method global attribute (plus cressman_radius_km).
     """
+    if method not in METHODS:
+        raise ValueError(f"run_batch_interpolation: method must be one of {METHODS}, got {method!r}")
+    if method == "cressman":
+        if cressman_radius_km is None or not cressman_radius_km > 0:
+            raise ValueError(f"run_batch_interpolation: method='cressman' needs cressman_radius_km > 0, got {cressman_radius_km!r}")
+    elif cressman_radius_km is not None:
+        raise ValueError("run_batch_interpolation: cressman_radius_km is only valid with method='cressman'")
+    if varname is None:
+        varname = DEFAULT_VARNAMES[method]
     if (target_grid_file is None) == (target_grid is None):
         raise ValueError(
             "run_batch_interpolation: exactly one of target_grid_file or target_grid must be given "
@@ -257,6 +292,16 @@ def run_batch_interpolation(
         raise ValueError(f"No MRMS files found under '{input_dir}' (pattern='{file_pattern}', date_range={date_range})")
     if max_files is not None:
         files = files[:max_files]
+    if method == "cressman":
+        # the source crop buffer, in km along its narrowest (east-west, highest-latitude) direction
+        grid = target_grid if target_grid is not None else load_target_grid(target_grid_file, target_lat_name, target_lon_name)
+        buffer_km = bbox_buffer_deg * 111.195 * np.cos(np.radians(min(89.0, float(np.max(np.abs(grid.lat2d))))))
+        if cressman_radius_km >= buffer_km:
+            raise ValueError(
+                f"run_batch_interpolation: cressman_radius_km={cressman_radius_km:g} must be smaller than the "
+                f"source crop buffer (bbox_buffer_deg={bbox_buffer_deg:g} deg = {buffer_km:.1f} km here); "
+                f"raise bbox_buffer_deg or use a smaller radius"
+            )
 
     # Pre-warm the weight cache ONCE, serially, in the main process -- this calls
     # the same construction _init_worker will call, so it populates this
@@ -266,6 +311,7 @@ def run_batch_interpolation(
     _init_worker(
         target_grid_file, target_lat_name, target_lon_name, weight_cache_dir,
         sample_mrms_file=files[0], bbox_buffer_deg=bbox_buffer_deg, target_grid=target_grid,
+        method=method, cressman_radius_km=cressman_radius_km,
     )
 
     task_args = [(f, output_dir, varname, fill_value, skip_existing) for f in files]
@@ -273,7 +319,8 @@ def run_batch_interpolation(
     with Pool(
         processes=n_workers,
         initializer=_init_worker,
-        initargs=(target_grid_file, target_lat_name, target_lon_name, weight_cache_dir, files[0], bbox_buffer_deg, target_grid),
+        initargs=(target_grid_file, target_lat_name, target_lon_name, weight_cache_dir, files[0], bbox_buffer_deg, target_grid,
+                  method, cressman_radius_km),
     ) as pool:
         results = pool.map(_process_one_file, task_args)
 

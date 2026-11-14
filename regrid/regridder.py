@@ -108,6 +108,128 @@ def build_conservative_regridder(
     return regridder
 
 
+EARTH_RADIUS_KM = 6371.0
+DEFAULT_MAX_CRESSMAN_NNZ = 1_500_000_000  # ~12 GB of float32 weights + int32/int64 indices
+
+
+class CressmanRegridder:
+    """Single-pass, fixed-radius Cressman operator: each target value is the
+    weighted mean of the source points within `radius_km`, with weights
+    (R^2 - r^2) / (R^2 + r^2). Holds the (unnormalized) weights as a sparse
+    n_target x n_source matrix and is called like an xesmf regridder
+    (`regridder(field2d) -> target2d`), so regrid_field() uses it unchanged.
+
+    Calling it returns (W @ x) / (W @ 1): a normalized, linear operator. Targets
+    with no source within the radius are NaN (as xesmf's unmapped_to_nan), and
+    regrid_field's valid-fraction handling of missing sources gives exactly a
+    Cressman average over the valid points only.
+    """
+
+    def __init__(self, weights, target_shape: tuple, radius_km: float):
+        self.weights = weights.tocsr()
+        self.target_shape = tuple(target_shape)
+        self.radius_km = float(radius_km)
+        self._row_sums = np.asarray(self.weights.sum(axis=1)).ravel().astype(np.float64)
+
+    def __call__(self, field2d):
+        x = np.asarray(field2d, dtype=np.float64).ravel()
+        if x.size != self.weights.shape[1]:
+            raise RegridError(
+                f"CressmanRegridder: field has {x.size} points but the operator expects "
+                f"{self.weights.shape[1]} source points"
+            )
+        num = self.weights @ x
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out = np.where(self._row_sums > 0, num / self._row_sums, np.nan)
+        return out.reshape(self.target_shape)
+
+
+def _unit_xyz_km(lat2d, lon2d) -> np.ndarray:
+    lat = np.radians(np.asarray(lat2d, dtype=np.float64).ravel())
+    lon = np.radians(np.asarray(lon2d, dtype=np.float64).ravel())
+    c = np.cos(lat)
+    return EARTH_RADIUS_KM * np.column_stack([c * np.cos(lon), c * np.sin(lon), np.sin(lat)])
+
+
+def build_cressman_regridder(
+    src_grid: GridSpec,
+    tgt_grid: GridSpec,
+    radius_km: float,
+    weight_cache_dir: str,
+    chunk_size: int = 200_000,
+    max_nnz: int = DEFAULT_MAX_CRESSMAN_NNZ,
+) -> CressmanRegridder:
+    """Build (or reuse a cached) single-pass Cressman operator from src_grid to
+    tgt_grid with radius of influence `radius_km`.
+
+    Points are placed on a sphere of radius EARTH_RADIUS_KM; distances are chord
+    lengths, within 1e-6 (relative) of great-circle distance for radii <= 50 km.
+    Pairs within the radius come from scipy cKDTree.sparse_distance_matrix, built
+    in target chunks of `chunk_size` to bound memory. Weights are cached as a
+    scipy .npz under `weight_cache_dir`, keyed by the radius and a content hash of
+    both grids (as for the conservative weights).
+
+    Raises RegridError (no fallback) for a non-positive radius, an estimated
+    operator size above `max_nnz` nonzeros (checked before building), or no
+    source point within the radius of any target point.
+    """
+    from scipy import sparse
+    from scipy.spatial import cKDTree
+
+    if not (radius_km is not None and np.isfinite(radius_km) and radius_km > 0):
+        raise RegridError(f"Cressman radius must be a positive number of km, got {radius_km!r}")
+
+    os.makedirs(weight_cache_dir, exist_ok=True)
+    key = f"cressman_r{radius_km:g}km__{grid_hash(src_grid)}__{grid_hash(tgt_grid)}"
+    weight_path = os.path.join(weight_cache_dir, key + ".npz")
+    if os.path.exists(weight_path):
+        return CressmanRegridder(sparse.load_npz(weight_path), tgt_grid.shape, radius_km)
+
+    src_xyz = _unit_xyz_km(src_grid.lat2d, src_grid.lon2d)
+    tgt_xyz = _unit_xyz_km(tgt_grid.lat2d, tgt_grid.lon2d)
+
+    # source point spacing from neighboring points, to estimate the operator size up front
+    ny, nx = src_grid.shape
+    dy = np.median(np.linalg.norm(np.diff(src_xyz.reshape(ny, nx, 3), axis=0), axis=-1)) if ny > 1 else 1.0
+    dx = np.median(np.linalg.norm(np.diff(src_xyz.reshape(ny, nx, 3), axis=1), axis=-1)) if nx > 1 else 1.0
+    est_nnz = len(tgt_xyz) * np.pi * radius_km**2 / max(dx * dy, 1e-12)
+    if est_nnz > max_nnz:
+        raise RegridError(
+            f"Cressman operator too large: ~{est_nnz:.3g} nonzero weights expected "
+            f"({len(tgt_xyz):,} target points x ~{np.pi * radius_km**2 / (dx * dy):.0f} source points "
+            f"within {radius_km:g} km) exceeds max_nnz={max_nnz:.3g}. Use a smaller radius or "
+            f"target grid, or raise max_nnz if the memory is available."
+        )
+
+    src_tree = cKDTree(src_xyz)
+    rows, cols, vals = [], [], []
+    r2 = radius_km**2
+    for start in range(0, len(tgt_xyz), chunk_size):
+        chunk = tgt_xyz[start:start + chunk_size]
+        dist = cKDTree(chunk).sparse_distance_matrix(src_tree, radius_km, output_type="coo_matrix")
+        d2 = dist.data.astype(np.float64) ** 2
+        keep = d2 < r2  # strictly inside the radius (the weight is 0 on it)
+        rows.append(dist.row[keep] + start)
+        cols.append(dist.col[keep])
+        vals.append(((r2 - d2[keep]) / (r2 + d2[keep])).astype(np.float32))
+    # (coincident points: sparse_distance_matrix keeps zero-distance pairs, so they get weight 1 above)
+    weights = sparse.coo_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))),
+        shape=(len(tgt_xyz), len(src_xyz)),
+    ).tocsr()
+    weights.sum_duplicates()
+    if weights.nnz == 0:
+        raise RegridError(
+            f"Cressman regridding failed: no source point lies within {radius_km:g} km of any target point "
+            f"(src lat [{src_grid.lat2d.min():.3f},{src_grid.lat2d.max():.3f}], lon "
+            f"[{src_grid.lon2d.min():.3f},{src_grid.lon2d.max():.3f}]; tgt lat "
+            f"[{tgt_grid.lat2d.min():.3f},{tgt_grid.lat2d.max():.3f}], lon "
+            f"[{tgt_grid.lon2d.min():.3f},{tgt_grid.lon2d.max():.3f}])"
+        )
+    sparse.save_npz(weight_path, weights)
+    return CressmanRegridder(weights, tgt_grid.shape, radius_km)
+
+
 def regrid_field(
     regridder,
     data2d: np.ndarray,
